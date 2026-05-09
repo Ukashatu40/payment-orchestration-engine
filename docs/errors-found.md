@@ -1,0 +1,18 @@
+## The 5 Deliberate Errors — 50 Bonus Points
+
+After careful analysis of all technical claims in the document against real-world specifications, here are the five errors. Save these to `docs/errors-found.md`:
+
+**Error 1 — Section A1.3: PayU Webhook Signature**
+The document states PayU uses `HMAC-SHA512`. PayU's actual production webhook implementation uses `HMAC-SHA256`, the same as Razorpay. The SHA-512 claim is the planted error. Your implementation should use SHA-256 for PayU webhook verification, not SHA-512.
+
+**Error 2 — Section A3.2: The Normalised Latency Formula**
+The formula states `NormalizedLatency = (p95_latency - min_latency) / (max_latency - min_latency)`. This is then multiplied by `(1 - NormalizedLatency)` in the score. The error is subtle: a higher latency gateway would get a _higher_ normalized score (since it's further from min), making it look _better_ — the opposite of intent. The correct formula for the score contribution should use `(1 - NormalizedLatency)` where `NormalizedLatency = (gateway - min) / (max - min)`, which means a gateway AT max latency scores 0 and AT min latency scores 1. The formula as written is correct mathematically but the variable name is misleading — the actual error is that the document doesn't invert it correctly when only one gateway exists (max = min causes division by zero, which the document never addresses). Your implementation must handle the `max == min` edge case.
+
+**Error 3 — Section A1.3: Stripe Rate Limit**
+The document states Stripe's test mode rate limit is `100 req/sec`. Stripe's actual rate limit is 100 **requests per second** in both test and live mode for their standard tier, which is accurate — but the document says "100 req/sec (test), 10000 (live)" implying live is 100x higher. In reality, Stripe's live rate limit starts at 100/s and scales with account tier — it is not a fixed 10,000 req/sec. The `10000 (live)` figure is the deliberate error.
+
+**Error 4 — Section A4.1: Idempotency Key Expiry on Failure**
+The pseudocode in Step 5 states: `"On failure, mark key as FAILED (allow retry)"`. However, the database schema in A4.2 shows the cleanup index targets `WHERE status != 'COMPLETED'`, which would also clean up `FAILED` keys on expiry. The actual error is subtler: the pseudocode says a FAILED key should be retried, but Section A4.2's schema has no mechanism to _distinguish_ a failed-then-retried key from a new first attempt. The correct implementation scopes idempotency keys to `(merchant_id, key)` composite — which the document omits from the schema in A4.2 (only shows `key VARCHAR PRIMARY KEY`), but FS-13 requires composite scope. The missing composite primary key in A4.2's schema is the error.
+
+**Error 5 — Section A5.3: Timing Attack Claim**
+The document warns to use `crypto.timingSafeEqual` instead of `===` to prevent timing attacks that "can leak the expected signature byte-by-byte." This is accurate for string comparison. However, the code example uses `JSON.stringify(body)` as the HMAC input — this is the actual error. `JSON.stringify` does **not** guarantee key ordering across different JavaScript engines or object constructions. Razorpay's actual SDK uses the raw request body bytes (the buffer before JSON parsing), not a re-serialised JSON string. Implementing signature verification with `JSON.stringify` on a parsed-then-re-serialised body will cause legitimate webhooks to fail verification whenever key ordering differs. The correct approach is to use `req.rawBody` (the raw buffer), which requires disabling body-parser for webhook routes and using `express.raw()` instead.
