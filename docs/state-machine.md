@@ -1,6 +1,5 @@
 ## Mermaid Diagram for `docs/state-machine.md`
 
-````
 ```mermaid
 stateDiagram-v2
     [*] --> CREATED
@@ -61,4 +60,4 @@ stateDiagram-v2
     ROUTE_FAILED --> [*]
     AUTH_EXPIRED --> [*]
     DISPUTE_RESOLVED --> [*]
-````
+```
