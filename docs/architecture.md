@@ -29,50 +29,41 @@ gateways, providing:
 
 ## 2. Architecture Diagram
 
-┌─────────────────────────────────────────────────────────┐
-│ Merchant Application │
-└─────────────────────────┬───────────────────────────────┘
-│ REST API (HTTPS)
-▼
-┌─────────────────────────────────────────────────────────┐
-│ Payment Orchestration Layer │
-│ │
-│ ┌──────────────┐ ┌──────────────┐ ┌─────────────┐ │
-│ │ API Layer │ │ Idempotency │ │ Trace ID │ │
-│ │ (NestJS + │───▶│ Service │ │ Interceptor │ │
-│ │ Fastify) │ │ (Adv. Locks) │ └─────────────┘ │
-│ └──────┬───────┘ └──────────────┘ │
-│ │ │
-│ ┌──────▼───────────────────────────────────────────┐ │
-│ │ Transaction State Machine │ │
-│ │ (SELECT FOR UPDATE + Immutable Audit Trail) │ │
-│ └──────┬───────────────────────────────────────────┘ │
-│ │ │
-│ ┌──────▼───────┐ ┌──────────────┐ │
-│ │ Gateway │ │ Circuit │ │
-│ │ Router │───▶│ Breaker │ │
-│ │ (Multi-score)│ │ (per gateway)│ │
-│ └──────┬───────┘ └──────────────┘ │
-│ │ │
-│ ┌──────▼───────────────────────────────────────────┐ │
-│ │ Gateway Adapter Layer │ │
-│ │ Razorpay │ Stripe │ PayU │ UPI (NPCI) │ │
-│ └──────────────────────────────────────────────────┘ │
-│ │
-│ ┌──────────────────────────────────────────────────┐ │
-│ │ Webhook Ingestion Pipeline │ │
-│ │ Verify → Deduplicate → Queue → Process → Audit │ │
-│ └──────────────────────────────────────────────────┘ │
-│ │
-│ ┌──────────────────────────────────────────────────┐ │
-│ │ Reconciliation Engine (Batch, 15min) │ │
-│ └──────────────────────────────────────────────────┘ │
-└─────────────────────────┬───────────────────────────────┘
-│
-┌───────────▼────────────┐
-│ PostgreSQL 15 │
-│ (Primary + Replica) │
-└────────────────────────┘
+```mermaid
+flowchart TD
+
+    A[Merchant Application]
+
+    A -->|REST API HTTPS| B
+
+    subgraph B[Payment Orchestration Layer]
+
+        direction TB
+
+        C[API Layer<br/>NestJS + Fastify]
+        D[Idempotency Service<br/>Advanced Locks]
+        E[Trace ID Interceptor]
+
+        C --> D
+        D --> F
+        C --> E
+
+        F[Transaction State Machine<br/>SELECT FOR UPDATE + Immutable Audit Trail]
+
+        F --> G[Gateway Router<br/>Multi-score Routing]
+
+        G --> H[Circuit Breaker<br/>Per Gateway]
+
+        G --> I[Gateway Adapter Layer<br/><br/>Razorpay | Stripe | PayU | UPI NPCI]
+
+        I --> J[Webhook Ingestion Pipeline<br/><br/>Verify → Deduplicate → Queue → Process → Audit]
+
+        J --> K[Reconciliation Engine<br/>Batch Every 15 Minutes]
+
+    end
+
+    B --> L[(PostgreSQL 15<br/>Primary + Replica)]
+```
 
 ---
 
