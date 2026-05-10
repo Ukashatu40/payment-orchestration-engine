@@ -40,31 +40,30 @@ flowchart TD
 
         direction TB
 
-        C[API Layer<br/>NestJS + Fastify]
-        D[Idempotency Service<br/>Advanced Locks]
-        E[Trace ID Interceptor]
+        C["API Layer<br/>NestJS + Fastify"]
+        D["Idempotency Service<br/>Advanced Locks"]
+        E["Trace ID Interceptor"]
 
         C --> D
         D --> F
         C --> E
 
-        F[Transaction State Machine<br/>SELECT FOR UPDATE + Immutable Audit Trail]
+        F["Transaction State Machine<br/>SELECT FOR UPDATE + Immutable Audit Trail"]
 
-        F --> G[Gateway Router<br/>Multi-score Routing]
+        F --> G["Gateway Router<br/>Multi-score Routing"]
 
-        G --> H[Circuit Breaker<br/>Per Gateway]
+        G --> H["Circuit Breaker<br/>Per Gateway"]
 
-        G --> I[Gateway Adapter Layer<br/><br/>Razorpay | Stripe | PayU | UPI NPCI]
+        G --> I["Gateway Adapter Layer<br/><br/>Razorpay, Stripe, PayU, UPI NPCI"]
 
-        I --> J[Webhook Ingestion Pipeline<br/><br/>Verify → Deduplicate → Queue → Process → Audit]
+        I --> J["Webhook Ingestion Pipeline<br/><br/>Verify → Deduplicate → Queue → Process → Audit"]
 
-        J --> K[Reconciliation Engine<br/>Batch Every 15 Minutes]
+        J --> K["Reconciliation Engine<br/>Batch Every 15 Minutes"]
 
     end
 
-    B --> L[(PostgreSQL 15<br/>Primary + Replica)]
+    B --> L[("PostgreSQL 15<br/>Primary + Replica")]
 ```
-
 ---
 
 ## 3. Technology Choices
