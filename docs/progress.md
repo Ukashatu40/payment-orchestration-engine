@@ -1,7 +1,7 @@
 - Level 1 ✅ Project scaffold & folder structure
 - Level 2 ✅ ADRs & markdown docs (state-machine.md, errors-found.md)
 - Level 3 ✅ Database migrations
-- Level 4 ← YOU ARE HERE: Entities (TypeORM classes)
+- Level 4 ✅ Entities (TypeORM classes)
 - Level 5 → Enums & constants
 - Level 6 → Custom exceptions
 - Level 7 → State machine (pure logic, no DB)
