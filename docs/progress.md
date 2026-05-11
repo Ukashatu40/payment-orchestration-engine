@@ -1,0 +1,18 @@
+- Level 1 ✅ Project scaffold & folder structure
+- Level 2 ✅ ADRs & markdown docs (state-machine.md, errors-found.md)
+- Level 3 ✅ Database migrations
+- Level 4 ← YOU ARE HERE: Entities (TypeORM classes)
+- Level 5 → Enums & constants
+- Level 6 → Custom exceptions
+- Level 7 → State machine (pure logic, no DB)
+- Level 8 → Repositories (DB access layer)
+- Level 9 → Services (business logic)
+- Level 10 → Gateway adapters (mock gateways)
+- Level 11 → Circuit breaker & router
+- Level 12 → Idempotency service
+- Level 13 → Webhook pipeline
+- Level 14 → Controllers & API layer
+- Level 15 → Guards, interceptors, filters (cross-cutting)
+- Level 16 → Module wiring (AppModule + feature modules)
+- Level 17 → Docker + config
+- Level 18 → Tests (unit → integration → scenarios)
