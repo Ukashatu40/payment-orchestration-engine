@@ -4,7 +4,7 @@
 - Level 4 ✅ Entities (TypeORM classes)
 - Level 5 ✅ Enums & constants
 - Level 6 ✅ Custom exceptions
-- Level 7 → State machine (pure logic, no DB)
+- Level 7 ✅ State machine (pure logic, no DB)
 - Level 8 → Repositories (DB access layer)
 - Level 9 → Services (business logic)
 - Level 10 → Gateway adapters (mock gateways)
