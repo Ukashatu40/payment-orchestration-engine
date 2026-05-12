@@ -2,8 +2,8 @@
 - Level 2 ✅ ADRs & markdown docs (state-machine.md, errors-found.md)
 - Level 3 ✅ Database migrations
 - Level 4 ✅ Entities (TypeORM classes)
-- Level 5 → Enums & constants
-- Level 6 → Custom exceptions
+- Level 5 ✅ Enums & constants
+- Level 6 ✅ Custom exceptions
 - Level 7 → State machine (pure logic, no DB)
 - Level 8 → Repositories (DB access layer)
 - Level 9 → Services (business logic)
