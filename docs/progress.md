@@ -6,13 +6,15 @@
 - Level 6 ✅ Custom exceptions
 - Level 7 ✅ State machine (pure logic, no DB)
 - Level 8 ✅ Repositories (DB access layer)
-- Level 9 → Services (business logic)
-- Level 10 → Gateway adapters (mock gateways)
-- Level 11 → Circuit breaker & router
-- Level 12 → Idempotency service
-- Level 13 → Webhook pipeline
-- Level 14 → Controllers & API layer
-- Level 15 → Guards, interceptors, filters (cross-cutting)
-- Level 16 → Module wiring (AppModule + feature modules)
-- Level 17 → Docker + config
-- Level 18 → Tests (unit → integration → scenarios)
+- Level 9 ✅ Gateway adapter interface + 4 mocks
+- Level 10 ✅ CircuitBreakerService + GatewayHealthService
+- Level 11 → GatewayRouterService
+- Level 12 → IdempotencyService
+- Level 13 → WebhookSignatureService + WebhookQueueService + WebhookProcessorService
+- Level 14 → ReconciliationService
+- Level 15 → TransactionsService
+- Level 16 → Controllers & API layer
+- Level 17 → Guards, interceptors, filters (cross-cutting)
+- Level 18 → Module wiring (AppModule + feature modules)
+- Level 19 → Docker + config
+- Level 20 → Tests (unit → integration → scenarios)
