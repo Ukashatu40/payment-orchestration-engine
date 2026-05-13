@@ -8,7 +8,7 @@
 - Level 8 ✅ Repositories (DB access layer)
 - Level 9 ✅ Gateway adapter interface + 4 mocks
 - Level 10 ✅ CircuitBreakerService + GatewayHealthService
-- Level 11 → GatewayRouterService
+- Level 11 ✅ GatewayRouterService
 - Level 12 → IdempotencyService
 - Level 13 → WebhookSignatureService + WebhookQueueService + WebhookProcessorService
 - Level 14 → ReconciliationService
@@ -16,10 +16,5 @@
 - Level 16 → Controllers & API layer
 - Level 17 → Guards, interceptors, filters (cross-cutting)
 - Level 18 → Module wiring (AppModule + feature modules)
-<<<<<<< HEAD
-- Level 1 → Docker + config
-- Level 18 → Tests (unit → integration → scenarios)
-=======
 - Level 19 → Docker + config
 - Level 20 → Tests (unit → integration → scenarios)
->>>>>>> 760bf9705fe5e375b199b328664660359894eb66
