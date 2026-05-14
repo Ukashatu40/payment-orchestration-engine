@@ -1,147 +1,190 @@
 // src/modules/idempotency/idempotency.service.ts
 
-import { ConflictException, Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import * as crypto from 'crypto';
-import { IdempotencyStatus } from 'src/common/enums/enums';
-
-export interface IdempotencyResult {
-  isNewRequest: boolean;
-  cachedResponse?: { code: number; body: unknown };
-}
-
-export interface IdempotencyRecord {
-  merchant_id?: string;
-  key?: string;
-  request_hash: string;
-  status: IdempotencyStatus;
-  response_code: number;
-  response_body: unknown;
-}
+import { IdempotencyKeyRepository } from './repositories/idempotency-key.repository';
+import { IdempotencyResult } from './interfaces/idempotency-result.interface';
+import { IdempotencyConflictException } from '../../common/exceptions';
 
 @Injectable()
 export class IdempotencyService {
-  constructor(private readonly dataSource: DataSource) {}
+  private readonly logger = new Logger(IdempotencyService.name);
 
-  /**
-   * Check-and-lock pattern using PostgreSQL advisory locks.
-   * Satisfies: FS-03 (double submit), FS-09 (concurrent race condition)
-   *
-   * Advisory locks are connection-scoped and auto-released on
-   * COMMIT/ROLLBACK — no deadlock risk.
-   */
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly idempotencyKeyRepo: IdempotencyKeyRepository,
+  ) {}
+
+  // ----------------------------------------------------------------
+  // Check-and-lock pattern.
+  //
+  // Flow:
+  // 1. Acquire pg_advisory_xact_lock scoped to (merchantId, key)
+  // 2. Check if key exists in DB
+  //    a. COMPLETED → return cached response (idempotent replay)
+  //    b. PROCESSING → throw ConflictException (FS-03 double-click)
+  //    c. FAILED → delete and allow retry
+  //    d. Not found → insert with PROCESSING status
+  // 3. Return isNewRequest: true — caller proceeds with business logic
+  // 4. Caller must call markCompleted() or markFailed() after processing
+  //
+  // The advisory lock is transaction-scoped — auto-released on commit.
+  // This means two concurrent requests with the same key will queue
+  // at step 1, not race to step 2. Satisfies FS-09.
+  // ----------------------------------------------------------------
   async acquireOrReturn(
     merchantId: string,
     idempotencyKey: string,
     requestBody: unknown,
   ): Promise<IdempotencyResult> {
-    const requestHash = crypto
-      .createHash('sha256')
-      .update(JSON.stringify(requestBody))
-      .digest('hex');
+    const requestHash = this.hashRequest(requestBody);
 
     return this.dataSource.transaction(async (manager) => {
-      // Step 1: Acquire advisory lock scoped to this idempotency key.
-      // pg_advisory_xact_lock is transaction-scoped — auto-releases on commit.
-      // Two concurrent requests with the same key will queue here, not race.
-      // This is what prevents the FS-09 microsecond race condition.
+      // Step 1: Acquire advisory lock scoped to this merchant + key.
+      // pg_advisory_xact_lock takes a single bigint — we hash the
+      // composite key string into a stable integer.
+      // Lock is released automatically when the transaction commits.
       const lockKey = `${merchantId}:${idempotencyKey}`;
       await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
         lockKey,
       ]);
 
-      // Step 2: Check if this key already exists (with lock held)
-      const existing: IdempotencyRecord[] = await manager.query(
-        `SELECT status, response_code, response_body, request_hash
-           FROM idempotency_keys
-          WHERE merchant_id = $1 AND key = $2`,
-        [merchantId, idempotencyKey],
+      // Step 2: Check existing record (with lock held — no race)
+      const existing = await this.idempotencyKeyRepo.findByKey(
+        merchantId,
+        idempotencyKey,
+        manager,
       );
 
-      if (existing.length > 0) {
-        const record = existing[0];
+      if (existing) {
+        // Case A: Already completed — return cached response
+        if (existing.status === 'COMPLETED') {
+          this.logger.log('Idempotency cache hit — returning cached response', {
+            merchantId,
+            idempotencyKey,
+          });
 
-        if (record.status === IdempotencyStatus.PROCESSING) {
-          // Another request is in-flight with the same key
-          // This is the FS-03 scenario (double-click Pay button)
-          throw new ConflictException(
-            'A request with this idempotency key is already being processed',
-          );
-        }
-
-        if (record.status === IdempotencyStatus.COMPLETED) {
-          // Return the cached response — idempotent replay
           return {
             isNewRequest: false,
             cachedResponse: {
-              code: record.response_code,
-              body: record.response_body,
+              code: existing.responseCode!,
+              body: existing.responseBody!,
             },
           };
         }
 
-        // Status is FAILED — allow retry by falling through to insert
-        await manager.query(
-          `DELETE FROM idempotency_keys
-            WHERE merchant_id = $1 AND key = $2`,
-          [merchantId, idempotencyKey],
-        );
+        // Case B: In-flight — another request is currently processing
+        // This is the FS-03 scenario (customer double-clicks Pay)
+        if (existing.status === 'PROCESSING') {
+          this.logger.warn('Duplicate in-flight request detected', {
+            merchantId,
+            idempotencyKey,
+          });
+
+          throw new IdempotencyConflictException(idempotencyKey, merchantId);
+        }
+
+        // Case C: Previous attempt failed — delete and allow retry
+        // The idempotency key is reusable after a FAILED attempt
+        if (existing.status === 'FAILED') {
+          await manager.query(
+            `DELETE FROM idempotency_keys
+              WHERE merchant_id = $1 AND key = $2`,
+            [merchantId, idempotencyKey],
+          );
+        }
       }
 
-      // Step 3: Insert with PROCESSING status (lock still held)
+      // Step 3: Insert new key with PROCESSING status.
       // ON CONFLICT DO NOTHING is a safety net — the advisory lock
-      // prevents concurrent inserts, but handles degenerate cases.
-      const inserted: { key: string }[] = await manager.query(
-        `INSERT INTO idempotency_keys
-           (merchant_id, key, request_hash, status)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (merchant_id, key) DO NOTHING
-         RETURNING key`,
-        [merchantId, idempotencyKey, requestHash, IdempotencyStatus.PROCESSING],
+      // prevents concurrent inserts, but this guards against any
+      // degenerate edge cases.
+      const inserted = await this.idempotencyKeyRepo.insertProcessing(
+        merchantId,
+        idempotencyKey,
+        requestHash,
+        manager,
       );
 
-      if (inserted.length === 0) {
-        // Race condition safety net triggered
-        throw new ConflictException(
-          'Concurrent request with same idempotency key detected',
-        );
+      // insertProcessing returns null when ON CONFLICT DO NOTHING fires,
+      // meaning another concurrent request already holds this key.
+      // This is the FS-09 race condition safety net.
+      this.logger.log('Attempted to acquire idempotency key', {
+        merchantId,
+        idempotencyKey,
+        insertResult: inserted ? 'INSERTED' : 'CONFLICT',
+      });
+
+      if (inserted === null || inserted === undefined) {
+        throw new IdempotencyConflictException(idempotencyKey, merchantId);
       }
 
-      // Advisory lock releases on transaction commit.
-      // The caller must call markCompleted() or markFailed() after processing.
       return { isNewRequest: true };
     });
   }
 
+  // ----------------------------------------------------------------
+  // Called after successful processing.
+  // Caches the response so future duplicate requests get it back.
+  // ----------------------------------------------------------------
   async markCompleted(
     merchantId: string,
     idempotencyKey: string,
     responseCode: number,
-    responseBody: unknown,
+    responseBody: Record<string, unknown>,
+    transactionId: string,
   ): Promise<void> {
-    await this.dataSource.query(
-      `UPDATE idempotency_keys
-          SET status = $5,
-              response_code = $3,
-              response_body = $4,
-              updated_at = NOW()
-        WHERE merchant_id = $1 AND key = $2`,
-      [
-        merchantId,
-        idempotencyKey,
-        responseCode,
-        responseBody,
-        IdempotencyStatus.COMPLETED,
-      ],
+    await this.idempotencyKeyRepo.markCompleted(
+      merchantId,
+      idempotencyKey,
+      responseCode,
+      responseBody,
+      transactionId,
     );
+
+    this.logger.log('Idempotency key marked COMPLETED', {
+      merchantId,
+      idempotencyKey,
+      transactionId,
+    });
   }
 
+  // ----------------------------------------------------------------
+  // Called when processing fails.
+  // Marks key as FAILED so the client can retry with the same key.
+  // ----------------------------------------------------------------
   async markFailed(merchantId: string, idempotencyKey: string): Promise<void> {
-    await this.dataSource.query(
-      `UPDATE idempotency_keys
-          SET status = $3, updated_at = NOW()
-        WHERE merchant_id = $1 AND key = $2`,
-      [merchantId, idempotencyKey, IdempotencyStatus.FAILED],
-    );
+    await this.idempotencyKeyRepo.markFailed(merchantId, idempotencyKey);
+
+    this.logger.log('Idempotency key marked FAILED', {
+      merchantId,
+      idempotencyKey,
+    });
+  }
+
+  // ----------------------------------------------------------------
+  // Cleanup job — deletes expired non-completed keys.
+  // Called on a schedule (Level 13 scheduler).
+  // ----------------------------------------------------------------
+  async purgeExpired(): Promise<number> {
+    const deleted = await this.idempotencyKeyRepo.deleteExpired();
+
+    if (deleted > 0) {
+      this.logger.log(`Purged ${deleted} expired idempotency keys`);
+    }
+
+    return deleted;
+  }
+
+  // ----------------------------------------------------------------
+  // SHA-256 of the request body.
+  // Stored so we can detect payload tampering on replay attempts.
+  // ----------------------------------------------------------------
+  private hashRequest(body: unknown): string {
+    return crypto
+      .createHash('sha256')
+      .update(JSON.stringify(body))
+      .digest('hex');
   }
 }
