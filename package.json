@@ -69,7 +69,18 @@
     "rootDir": "test",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "allowJs": true
+        }
+      ]
+    },
+    "transformIgnorePatterns": [
+      "/node_modules/(?!(uuid)/)"
+    ],
+    "moduleNameMapper": {
+      "^uuid$": "/Users/apple/codes/javascript/backend/payflow-orchestration-layer/node_modules/uuid/dist/index.js"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
