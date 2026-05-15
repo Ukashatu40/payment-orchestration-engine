@@ -1,86 +1,587 @@
-// src/modules/transactions/transactions.service.ts (excerpt)
-// Demonstrates the lock → intermediate state → release → gateway → lock → final state pattern
-import { Injectable } from '@nestjs/common';
+// src/modules/transactions/transactions.service.ts
+
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
+import { TransactionRepository } from './repositories/transaction.repository';
+import { TransactionStateLogRepository } from './repositories/transaction-state-log.repository';
 import { TransactionStateMachineService } from './state-machine/transaction-state-machine.service';
-import { GatewayRouterService } from '../gateway-router/gateway-router.service';
-import { InitiatePaymentDto } from './dto/initiate-payment.dto';
-import { Transaction, TransactionState } from './entities/transaction.entity';
+import { IdempotencyService } from '../idempotency/idempotency.service';
+import { GatewayRouterService } from '../gateways/router/gateway-router.service';
+import { GatewayAdapterRegistry } from '../gateways/adapters/gateway-adapter.registry';
+import { CircuitBreakerService } from '../gateways/circuit-breaker/circuit-breaker.service';
+import { GatewayHealthService } from '../gateways/health/gateway-health.service';
+import { Transaction } from './entities/transaction.entity';
+import { TransactionStateLog } from './entities/transaction-state-log.entity';
+import { TransactionState } from '../../common/enums';
+import {
+  GatewayTimeoutException,
+  GatewayUnavailableException,
+} from '../../common/exceptions';
+import {
+  InitiatePaymentDto,
+  CapturePaymentDto,
+  RefundPaymentDto,
+  VoidPaymentDto,
+} from './interfaces/initiate-payment.interface';
 
 @Injectable()
 export class TransactionsService {
+  private readonly logger = new Logger(TransactionsService.name);
+
   constructor(
     private readonly dataSource: DataSource,
+    private readonly transactionRepo: TransactionRepository,
+    private readonly stateLogRepo: TransactionStateLogRepository,
     private readonly stateMachine: TransactionStateMachineService,
+    private readonly idempotencyService: IdempotencyService,
     private readonly gatewayRouter: GatewayRouterService,
+    private readonly gatewayRegistry: GatewayAdapterRegistry,
+    private readonly circuitBreaker: CircuitBreakerService,
+    private readonly healthService: GatewayHealthService,
   ) {}
+
+  // ----------------------------------------------------------------
+  // POST /api/v1/payments
+  //
+  // Full payment initiation flow:
+  // 1. Idempotency check (advisory lock)
+  // 2. Create transaction record
+  // 3. Select gateway (router + circuit breaker)
+  // 4. Transition to AUTH_INITIATED (lock released before gateway call)
+  // 5. Call gateway authorise
+  // 6. Transition to AUTHORISED or AUTH_FAILED/AUTH_TIMEOUT
+  // 7. Mark idempotency key completed
+  //
+  // Satisfies: FS-01, FS-03, FS-09, FS-13
+  // ----------------------------------------------------------------
   async initiatePayment(dto: InitiatePaymentDto): Promise<Transaction> {
-    // ── Phase 1: Acquire lock, write AUTH_INITIATED, RELEASE LOCK ──────────
-    // The lock is released the moment this .transaction() block returns.
-    // Connection is returned to pool. Gateway call happens OUTSIDE the lock.
-    const { transaction, gateway, gatewayOrderId } =
-      await this.dataSource.transaction(async (manager) => {
-        // SELECT FOR UPDATE happens inside stateMachine.transition()
-        const txn = await this.stateMachine.transition(
-          dto.transactionId,
-          TransactionState.AUTH_INITIATED,
+    const startTime = Date.now();
+
+    // Step 1: Idempotency check — advisory lock prevents FS-09
+    const idempotencyResult = await this.idempotencyService.acquireOrReturn(
+      dto.merchantId,
+      dto.idempotencyKey,
+      { merchantOrderId: dto.merchantOrderId, amountPaise: dto.amountPaise },
+    );
+
+    // Duplicate request — return cached response without hitting gateway
+    if (!idempotencyResult.isNewRequest) {
+      this.logger.log('Returning cached idempotency response', {
+        merchantId: dto.merchantId,
+        idempotencyKey: dto.idempotencyKey,
+        traceId: dto.traceId,
+      });
+
+      const cached = await this.transactionRepo.findByMerchantOrderId(
+        dto.merchantId,
+        dto.merchantOrderId,
+      );
+
+      if (cached) return cached;
+    }
+
+    // Step 2: Create transaction record in CREATED state
+    const transaction = await this.transactionRepo.create({
+      merchantId: dto.merchantId,
+      merchantOrderId: dto.merchantOrderId,
+      amountPaise: dto.amountPaise,
+      currency: dto.currency,
+      paymentMethod: dto.paymentMethod,
+      idempotencyKey: dto.idempotencyKey,
+      traceId: dto.traceId,
+      metadata: dto.metadata ?? {},
+      state: TransactionState.CREATED,
+    });
+
+    this.logger.log('Transaction created', {
+      transactionId: transaction.id,
+      traceId: dto.traceId,
+    });
+
+    try {
+      // Step 3: Select gateway
+      let selectedGateway: string;
+
+      try {
+        selectedGateway = await this.gatewayRouter.selectGateway(
+          transaction.id,
+          dto.paymentMethod,
+          dto.traceId,
+        );
+      } catch (err) {
+        // No gateway available — transition to ROUTE_FAILED
+        await this.stateMachine.transition(
+          transaction.id,
+          TransactionState.ROUTE_SELECTED,
           {
-            event: 'PAYMENT_INITIATION_REQUESTED',
+            event: 'ROUTE_SELECTION_STARTED',
             triggeredBy: 'api_server',
             traceId: dto.traceId,
           },
-          manager, // pass the manager so the lock is scoped to this txn
         );
 
-        const selectedGateway = await this.gatewayRouter.selectGateway(
+        await this.stateMachine.transition(
+          transaction.id,
+          TransactionState.ROUTE_FAILED,
+          {
+            event: 'NO_GATEWAY_AVAILABLE',
+            triggeredBy: 'api_server',
+            traceId: dto.traceId,
+            metadata: { error: (err as Error).message },
+          },
+        );
+
+        throw err;
+      }
+
+      // Step 4a: Transition CREATED → ROUTE_SELECTED
+      await this.stateMachine.transition(
+        transaction.id,
+        TransactionState.ROUTE_SELECTED,
+        {
+          event: 'GATEWAY_SELECTED',
+          triggeredBy: 'api_server',
+          traceId: dto.traceId,
+          metadata: { gateway: selectedGateway },
+        },
+      );
+
+      // Step 4b: Transition ROUTE_SELECTED → AUTH_INITIATED
+      // Lock is acquired and released inside transition().
+      // Gateway call happens AFTER this returns — lock not held. (A8.1)
+      const authInitiated = await this.stateMachine.transition(
+        transaction.id,
+        TransactionState.AUTH_INITIATED,
+        {
+          event: 'AUTH_REQUEST_SENT',
+          triggeredBy: 'api_server',
+          traceId: dto.traceId,
+          metadata: { gateway: selectedGateway },
+        },
+      );
+
+      // Update gateway on transaction for reconciliation engine
+      (await this.transactionRepo['repo']?.update)
+        ? this.dataSource
+            .getRepository(Transaction)
+            .update({ id: transaction.id }, { gateway: selectedGateway as any })
+        : null;
+
+      // Step 5: Call gateway — no DB lock held during this I/O
+      const adapter = this.gatewayRegistry.get(selectedGateway as any);
+      const gatewayStart = Date.now();
+
+      let authResponse: Awaited<ReturnType<typeof adapter.authorise>>;
+
+      try {
+        authResponse = await adapter.authorise({
+          transactionId: transaction.id,
+          merchantId: dto.merchantId,
+          amountPaise: dto.amountPaise,
+          currency: dto.currency,
+          paymentMethod: dto.paymentMethod,
+          idempotencyKey: dto.idempotencyKey,
+          traceId: dto.traceId,
+          metadata: dto.metadata,
+        });
+
+        // Record latency sample for routing algorithm
+        this.healthService.record({
+          gateway: selectedGateway as any,
+          paymentMethod: dto.paymentMethod,
+          latencyMs: Date.now() - gatewayStart,
+          success: authResponse.status === 'authorised',
+        });
+
+        // Record circuit breaker result
+        if (authResponse.status === 'authorised') {
+          this.circuitBreaker.recordSuccess(
+            selectedGateway as any,
+            dto.paymentMethod,
+          );
+        } else {
+          this.circuitBreaker.recordFailure(
+            selectedGateway as any,
+            dto.paymentMethod,
+          );
+        }
+      } catch (err) {
+        // Gateway call failed — record failure and determine next state
+        this.healthService.record({
+          gateway: selectedGateway as any,
+          paymentMethod: dto.paymentMethod,
+          latencyMs: Date.now() - gatewayStart,
+          success: false,
+        });
+
+        this.circuitBreaker.recordFailure(
+          selectedGateway as any,
           dto.paymentMethod,
-          manager,
         );
 
-        return { transaction: txn, gateway: selectedGateway };
-      });
-    // ── Lock released here. DB connection back in pool. ────────────────────
+        const isTimeout = err instanceof GatewayTimeoutException;
+        const nextState = isTimeout
+          ? TransactionState.AUTH_TIMEOUT
+          : TransactionState.AUTH_FAILED;
 
-    // ── Phase 2: Gateway call — no DB lock held ────────────────────────────
-    // If the process crashes here, the reconciliation engine (Section A5.5)
-    // will poll the gateway and recover the state. (FS-11)
-    let gatewayResult: GatewayAuthResult;
-    try {
-      gatewayResult = await gateway.authorise({
+        // Step 6a: Transition to failure state
+        await this.stateMachine.transition(transaction.id, nextState, {
+          event: isTimeout ? 'GATEWAY_TIMEOUT' : 'GATEWAY_ERROR',
+          triggeredBy: 'api_server',
+          traceId: dto.traceId,
+          metadata: { error: (err as Error).message, gateway: selectedGateway },
+        });
+
+        await this.idempotencyService.markFailed(
+          dto.merchantId,
+          dto.idempotencyKey,
+        );
+
+        throw err;
+      }
+
+      // Step 6b: Transition to AUTHORISED or AUTH_FAILED based on response
+      if (authResponse.status === 'declined') {
+        await this.stateMachine.transition(
+          transaction.id,
+          TransactionState.AUTH_FAILED,
+          {
+            event: 'GATEWAY_DECLINED',
+            triggeredBy: 'api_server',
+            traceId: dto.traceId,
+            gatewayReference: authResponse.gatewayReference,
+            gatewayResponse: authResponse.rawResponse,
+          },
+        );
+
+        await this.idempotencyService.markFailed(
+          dto.merchantId,
+          dto.idempotencyKey,
+        );
+
+        throw new Error(`Payment declined by gateway: ${selectedGateway}`);
+      }
+
+      // Success path
+      const authorised = await this.stateMachine.transition(
+        transaction.id,
+        TransactionState.AUTHORISED,
+        {
+          event: 'GATEWAY_AUTH_SUCCESS',
+          triggeredBy: 'api_server',
+          traceId: dto.traceId,
+          gatewayReference: authResponse.gatewayReference,
+          gatewayResponse: authResponse.rawResponse,
+        },
+      );
+
+      // Update gateway payment IDs on transaction
+      await this.dataSource.getRepository(Transaction).update(
+        { id: transaction.id },
+        {
+          gatewayPaymentId: authResponse.gatewayPaymentId,
+          gatewayOrderId: authResponse.gatewayOrderId ?? null,
+          gatewayReference: authResponse.gatewayReference,
+        },
+      );
+
+      // Step 7: Cache successful response in idempotency store
+      await this.idempotencyService.markCompleted(
+        dto.merchantId,
+        dto.idempotencyKey,
+        201,
+        { transactionId: transaction.id, state: TransactionState.AUTHORISED },
+        transaction.id,
+      );
+
+      this.logger.log('Payment initiated successfully', {
         transactionId: transaction.id,
-        amountPaise: transaction.amountPaise,
+        gateway: selectedGateway,
+        durationMs: Date.now() - startTime,
+        traceId: dto.traceId,
+      });
+
+      return authorised;
+    } catch (err) {
+      // Idempotency already marked failed inside the catch blocks above
+      // for gateway failures. This outer catch handles unexpected errors.
+      this.logger.error('Payment initiation failed', {
+        transactionId: transaction.id,
+        error: (err as Error).message,
+        traceId: dto.traceId,
+      });
+
+      throw err;
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // POST /api/v1/payments/:id/capture
+  // Satisfies: FS-04, FS-05
+  // ----------------------------------------------------------------
+  async capturePayment(dto: CapturePaymentDto): Promise<Transaction> {
+    const transaction = await this.findOrThrow(dto.transactionId);
+    const captureAmount = dto.amountPaise ?? transaction.amountPaise;
+
+    // Transition to CAPTURE_INITIATED (lock released before gateway call)
+    await this.stateMachine.transition(
+      transaction.id,
+      TransactionState.CAPTURE_INITIATED,
+      {
+        event: 'CAPTURE_REQUESTED',
+        triggeredBy: dto.triggeredBy,
+        traceId: dto.traceId,
+        metadata: { amountPaise: captureAmount.toString() },
+      },
+    );
+
+    const adapter = this.gatewayRegistry.get(transaction.gateway!);
+
+    let captureResponse: Awaited<ReturnType<typeof adapter.capture>>;
+
+    try {
+      captureResponse = await adapter.capture({
+        transactionId: transaction.id,
+        gatewayPaymentId: transaction.gatewayPaymentId!,
+        amountPaise: captureAmount,
         currency: transaction.currency,
         traceId: dto.traceId,
       });
     } catch (err) {
-      // Gateway call failed — write AUTH_FAILED/AUTH_TIMEOUT state
-      // Acquire a new lock for this second transition
+      // Capture failed — move to CAPTURE_FAILED for retry (FS-04)
       await this.stateMachine.transition(
         transaction.id,
-        err instanceof GatewayTimeoutError
-          ? TransactionState.AUTH_TIMEOUT // → triggers failover (FS-01)
-          : TransactionState.AUTH_FAILED,
+        TransactionState.CAPTURE_FAILED,
         {
-          event: 'GATEWAY_AUTH_ERROR',
-          triggeredBy: 'api_server',
+          event: 'CAPTURE_GATEWAY_ERROR',
+          triggeredBy: dto.triggeredBy,
           traceId: dto.traceId,
-          metadata: { error: err.message },
+          metadata: { error: (err as Error).message },
         },
       );
+
       throw err;
     }
 
-    // ── Phase 3: Acquire new lock, write final state, release ──────────────
-    return this.stateMachine.transition(
+    // Determine if full or partial capture (FS-05)
+    const isPartial =
+      captureResponse.capturedAmountPaise < transaction.amountPaise;
+
+    const nextState = isPartial
+      ? TransactionState.PARTIALLY_CAPTURED
+      : TransactionState.CAPTURED;
+
+    const captured = await this.stateMachine.transition(
       transaction.id,
-      TransactionState.AUTHORISED,
+      nextState,
       {
-        event: 'GATEWAY_AUTH_SUCCESS',
-        triggeredBy: 'api_server',
+        event: 'CAPTURE_SUCCESS',
+        triggeredBy: dto.triggeredBy,
         traceId: dto.traceId,
-        gatewayReference: gatewayResult.paymentId,
-        gatewayResponse: gatewayResult.rawResponse,
+        gatewayReference: captureResponse.gatewayReference,
+        gatewayResponse: captureResponse.rawResponse,
       },
     );
+
+    // Update captured amount
+    await this.dataSource
+      .getRepository(Transaction)
+      .update(
+        { id: transaction.id },
+        { capturedPaise: captureResponse.capturedAmountPaise },
+      );
+
+    return captured;
+  }
+
+  // ----------------------------------------------------------------
+  // POST /api/v1/payments/:id/refund
+  // Satisfies: FS-08
+  // ----------------------------------------------------------------
+  async refundPayment(dto: RefundPaymentDto): Promise<Transaction> {
+    const transaction = await this.findOrThrow(dto.transactionId);
+
+    await this.stateMachine.transition(
+      transaction.id,
+      TransactionState.REFUND_INITIATED,
+      {
+        event: 'REFUND_REQUESTED',
+        triggeredBy: dto.triggeredBy,
+        traceId: dto.traceId,
+        metadata: {
+          amountPaise: dto.amountPaise.toString(),
+          reason: dto.reason,
+        },
+      },
+    );
+
+    const adapter = this.gatewayRegistry.get(transaction.gateway!);
+
+    let refundResponse: Awaited<ReturnType<typeof adapter.refund>>;
+
+    try {
+      refundResponse = await adapter.refund({
+        transactionId: transaction.id,
+        refundId: uuidv4(),
+        gatewayPaymentId: transaction.gatewayPaymentId!,
+        amountPaise: dto.amountPaise,
+        currency: transaction.currency,
+        reason: dto.reason,
+        traceId: dto.traceId,
+      });
+    } catch (err) {
+      await this.stateMachine.transition(
+        transaction.id,
+        TransactionState.REFUND_FAILED,
+        {
+          event: 'REFUND_GATEWAY_ERROR',
+          triggeredBy: dto.triggeredBy,
+          traceId: dto.traceId,
+          metadata: { error: (err as Error).message },
+        },
+      );
+
+      throw err;
+    }
+
+    const isPartial = refundResponse.status === 'partially_refunded';
+
+    const nextState = isPartial
+      ? TransactionState.PARTIALLY_REFUNDED
+      : TransactionState.REFUNDED;
+
+    const refunded = await this.stateMachine.transition(
+      transaction.id,
+      nextState,
+      {
+        event: 'REFUND_SUCCESS',
+        triggeredBy: dto.triggeredBy,
+        traceId: dto.traceId,
+        gatewayReference: refundResponse.gatewayRefundId,
+        gatewayResponse: refundResponse.rawResponse,
+      },
+    );
+
+    // Update refunded amount
+    await this.dataSource
+      .getRepository(Transaction)
+      .update(
+        { id: transaction.id },
+        { refundedPaise: transaction.refundedPaise + dto.amountPaise },
+      );
+
+    return refunded;
+  }
+
+  // ----------------------------------------------------------------
+  // POST /api/v1/payments/:id/void
+  // ----------------------------------------------------------------
+  async voidPayment(dto: VoidPaymentDto): Promise<Transaction> {
+    const transaction = await this.findOrThrow(dto.transactionId);
+
+    await this.stateMachine.transition(
+      transaction.id,
+      TransactionState.VOID_INITIATED,
+      {
+        event: 'VOID_REQUESTED',
+        triggeredBy: dto.triggeredBy,
+        traceId: dto.traceId,
+      },
+    );
+
+    const adapter = this.gatewayRegistry.get(transaction.gateway!);
+
+    try {
+      await adapter.void({
+        transactionId: transaction.id,
+        gatewayPaymentId: transaction.gatewayPaymentId!,
+        traceId: dto.traceId,
+      });
+    } catch (err) {
+      // Void failed — can retry capture
+      await this.stateMachine.transition(
+        transaction.id,
+        TransactionState.CAPTURE_INITIATED,
+        {
+          event: 'VOID_FAILED_RETRY_CAPTURE',
+          triggeredBy: dto.triggeredBy,
+          traceId: dto.traceId,
+          metadata: { error: (err as Error).message },
+        },
+      );
+
+      throw err;
+    }
+
+    return this.stateMachine.transition(
+      transaction.id,
+      TransactionState.VOIDED,
+      {
+        event: 'VOID_SUCCESS',
+        triggeredBy: dto.triggeredBy,
+        traceId: dto.traceId,
+      },
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // GET /api/v1/payments/:id
+  // ----------------------------------------------------------------
+  async findById(id: string): Promise<Transaction> {
+    return this.findOrThrow(id);
+  }
+
+  // ----------------------------------------------------------------
+  // GET /api/v1/payments/:id/timeline
+  // ----------------------------------------------------------------
+  async getTimeline(transactionId: string): Promise<TransactionStateLog[]> {
+    await this.findOrThrow(transactionId);
+    return this.stateLogRepo.findByTransactionId(transactionId);
+  }
+
+  // ----------------------------------------------------------------
+  // GET /api/v1/payments?merchant_order_id=
+  // ----------------------------------------------------------------
+  async findByMerchantOrderId(
+    merchantId: string,
+    merchantOrderId: string,
+  ): Promise<Transaction> {
+    const transaction = await this.transactionRepo.findByMerchantOrderId(
+      merchantId,
+      merchantOrderId,
+    );
+
+    if (!transaction) {
+      throw new NotFoundException(
+        `Transaction not found for order ${merchantOrderId}`,
+      );
+    }
+
+    return transaction;
+  }
+
+  // ----------------------------------------------------------------
+  // Analytics
+  // ----------------------------------------------------------------
+  async getSuccessRateAnalytics(fromDate: Date, toDate: Date) {
+    return this.transactionRepo.getSuccessRateByGateway(fromDate, toDate);
+  }
+
+  async getVolumeAnalytics(fromDate: Date, toDate: Date) {
+    return this.transactionRepo.getVolumeByDay(fromDate, toDate);
+  }
+
+  // ----------------------------------------------------------------
+  // Internal helpers
+  // ----------------------------------------------------------------
+  private async findOrThrow(id: string): Promise<Transaction> {
+    const transaction = await this.transactionRepo.findById(id);
+
+    if (!transaction) {
+      throw new NotFoundException(`Transaction not found: ${id}`);
+    }
+
+    return transaction;
   }
 }
