@@ -16,6 +16,7 @@ export class CreateGatewayHealthMetrics1748000000006 implements MigrationInterfa
       )
     `);
 
+    // Index for efficient retrieval of recent metrics per gateway and method
     await queryRunner.query(`
       CREATE INDEX idx_health_metrics_gateway_time
         ON gateway_health_metrics (gateway, payment_method, recorded_at DESC)
