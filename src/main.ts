@@ -13,7 +13,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      logger: false, // NestJS logger handles this
+      logger: false,
       bodyLimit: 1_048_576,
       connectionTimeout: 65_000,
     }),
@@ -22,9 +22,10 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
 
   // Raw body for webhook signature verification (Deliberate Error 5 fix)
-  const fastifyInstance = app.getHttpAdapter().getInstance();
-
-  fastifyInstance.addContentTypeParser(
+  // Must remove existing parser before adding ours
+  const fastify = app.getHttpAdapter().getInstance();
+  fastify.removeContentTypeParser('application/json');
+  fastify.addContentTypeParser(
     'application/json',
     { parseAs: 'buffer' },
     (_req: any, body: Buffer, done: any) => {
