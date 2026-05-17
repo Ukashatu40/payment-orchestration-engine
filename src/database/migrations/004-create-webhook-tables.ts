@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 // src/database/migrations/004-create-webhook-tables.ts
-export class CreateWebhookTables1004 implements MigrationInterface {
+export class CreateWebhookTables1748000000004 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS processed_webhook_events`);
     await queryRunner.query(`DROP TABLE IF EXISTS webhook_queue`);

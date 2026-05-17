@@ -1,7 +1,7 @@
 // src/database/migrations/009-create-gateway-config.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateGatewayConfig1009 implements MigrationInterface {
+export class CreateGatewayConfig1748000000009 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE gateway_config (

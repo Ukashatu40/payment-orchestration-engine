@@ -1,7 +1,7 @@
 // src/database/migrations/001-create-transactions.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateTransactions1001 implements MigrationInterface {
+export class CreateTransactions1748000000001 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Enums first — define every state upfront
     await queryRunner.query(`

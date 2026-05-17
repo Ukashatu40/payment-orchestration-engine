@@ -1,7 +1,7 @@
 // src/database/migrations/005-create-gateway-routes.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateGatewayRoutes1005 implements MigrationInterface {
+export class CreateGatewayRoutes1748000000005 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE gateway_routes (

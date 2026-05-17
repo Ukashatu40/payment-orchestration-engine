@@ -3,6 +3,17 @@
 import { Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
+// Add these imports at the top
+import { CreateTransactions1748000000001 } from './migrations/001-create-transactions';
+import { CreateTransactionStateLog1748000000002 } from './migrations/002-create-transaction-state-log';
+import { CreateIdempotencyKeys1748000000003 } from './migrations/003-create-idempotency-keys';
+import { CreateWebhookTables1748000000004 } from './migrations/004-create-webhook-tables';
+import { CreateGatewayRoutes1748000000005 } from './migrations/005-create-gateway-routes';
+import { CreateGatewayHealthMetrics1748000000006 } from './migrations/006-create-gateway-health-metrics';
+import { CreateReconciliationLog1748000000007 } from './migrations/007-create-reconciliation-log';
+import { CreateRefunds1748000000008 } from './migrations/008-create-refunds';
+import { CreateGatewayConfig1748000000009 } from './migrations/009-create-gateway-config';
+import { CreateRoutingConfigAndSeed1748000000010 } from './migrations/010-create-routing-config-and-seed';
 import { Transaction } from '../modules/transactions/entities/transaction.entity';
 import { TransactionStateLog } from '../modules/transactions/entities/transaction-state-log.entity';
 import { Refund } from '../modules/transactions/entities/refund.entity';
@@ -40,7 +51,18 @@ import { ReconciliationLog } from '../modules/reconciliation/entities/reconcilia
           RoutingConfig,
           ReconciliationLog,
         ],
-        migrations: ['dist/database/migrations/*.js'],
+        migrations: [
+          CreateTransactions1748000000001,
+          CreateTransactionStateLog1748000000002,
+          CreateIdempotencyKeys1748000000003,
+          CreateWebhookTables1748000000004,
+          CreateGatewayRoutes1748000000005,
+          CreateGatewayHealthMetrics1748000000006,
+          CreateReconciliationLog1748000000007,
+          CreateRefunds1748000000008,
+          CreateGatewayConfig1748000000009,
+          CreateRoutingConfigAndSeed1748000000010,
+        ],
         migrationsRun: true,
         synchronize: false, // never true in production
         logging:

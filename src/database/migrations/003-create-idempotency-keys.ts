@@ -1,6 +1,6 @@
 // src/database/migrations/003-create-idempotency-keys.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
-export class CreateIdempotencyKeys1003 implements MigrationInterface {
+export class CreateIdempotencyKeys1748000000003 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS idempotency_keys`);
   }

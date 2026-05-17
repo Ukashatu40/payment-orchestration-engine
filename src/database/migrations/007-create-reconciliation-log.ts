@@ -1,7 +1,7 @@
 // src/database/migrations/007-create-reconciliation-log.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateReconciliationLog1007 implements MigrationInterface {
+export class CreateReconciliationLog1748000000007 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE reconciliation_log (

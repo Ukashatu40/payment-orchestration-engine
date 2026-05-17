@@ -1,7 +1,7 @@
 // src/database/migrations/010-create-routing-config-and-seed.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateRoutingConfigAndSeed1010 implements MigrationInterface {
+export class CreateRoutingConfigAndSeed1748000000010 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE routing_config (

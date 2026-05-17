@@ -1,7 +1,7 @@
 // src/database/migrations/006-create-gateway-health-metrics.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateGatewayHealthMetrics1006 implements MigrationInterface {
+export class CreateGatewayHealthMetrics1748000000006 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE gateway_health_metrics (
@@ -19,13 +19,6 @@ export class CreateGatewayHealthMetrics1006 implements MigrationInterface {
     await queryRunner.query(`
       CREATE INDEX idx_health_metrics_gateway_time
         ON gateway_health_metrics (gateway, payment_method, recorded_at DESC)
-    `);
-
-    //-- Partial index for sliding window queries (Section A3.1)
-    await queryRunner.query(`
-      CREATE INDEX idx_health_metrics_recent
-        ON gateway_health_metrics (gateway, recorded_at DESC)
-        WHERE recorded_at > NOW() - INTERVAL '1 hour'
     `);
   }
 

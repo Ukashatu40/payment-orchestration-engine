@@ -1,7 +1,7 @@
 // src/database/migrations/008-create-refunds.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateRefunds1008 implements MigrationInterface {
+export class CreateRefunds1748000000008 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TYPE refund_state AS ENUM (

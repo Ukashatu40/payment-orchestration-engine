@@ -1,6 +1,6 @@
 // src/database/migrations/002-create-transaction-state-log.ts
 import { MigrationInterface, QueryRunner } from 'typeorm';
-export class CreateTransactionStateLog1002 implements MigrationInterface {
+export class CreateTransactionStateLog1748000000002 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP TABLE IF EXISTS transaction_state_log`);
   }
