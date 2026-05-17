@@ -1,0 +1,50 @@
+# docker-compose.test.yml
+
+version: '3.9'
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: payflow-postgres-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payflow_test
+    ports:
+      - '5433:5432'
+    # No volume — ephemeral, destroyed after test run
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    restart: 'no'
+
+  api-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: payflow-api-test
+    ports:
+      - '3001:3000'
+    environment:
+      NODE_ENV: test
+      PORT: 3000
+      DB_HOST: postgres-test
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: payflow_test
+      DB_POOL_MAX: 20
+      API_KEYS: test-api-key-001
+      RAZORPAY_WEBHOOK_SECRET: test-razorpay-secret
+      STRIPE_WEBHOOK_SECRET: test-stripe-secret
+      PAYU_WEBHOOK_SECRET: test-payu-secret
+      UPI_WEBHOOK_SECRET: test-upi-secret
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    restart: 'no'
+
+volumes: {}

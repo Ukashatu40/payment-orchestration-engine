@@ -1,0 +1,62 @@
+# docker-compose.yml
+
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: payflow-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payflow_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: payflow-api
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: payflow_db
+      DB_POOL_MAX: 20
+      API_KEYS: dev-api-key-001,dev-api-key-002
+      RAZORPAY_WEBHOOK_SECRET: mock-razorpay-secret
+      STRIPE_WEBHOOK_SECRET: mock-stripe-secret
+      PAYU_WEBHOOK_SECRET: mock-payu-secret
+      UPI_WEBHOOK_SECRET: mock-upi-secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    # Application must respond to health check within 60 seconds
+    # of docker-compose up (Section B4.1)
+    healthcheck:
+      test: >
+        wget -qO- http://localhost:3000/api/v1/health
+        -H "X-API-Key: dev-api-key-001" || exit 1
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+volumes:
+  postgres_data:
