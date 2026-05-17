@@ -6,7 +6,7 @@ import { Transform } from 'class-transformer';
 export class RefundPaymentRequestDto {
   @Transform(({ value }) => BigInt(value))
   @Min(1)
-  amountPaise: bigint;
+  amountPaise!: bigint;
 
   @IsOptional()
   @IsString()
@@ -14,5 +14,5 @@ export class RefundPaymentRequestDto {
 
   @IsString()
   @IsNotEmpty()
-  idempotencyKey: string;
+  idempotencyKey!: string;
 }

@@ -37,6 +37,6 @@ export class GatewayConfigRepository {
     gateway: PaymentGateway,
     updates: Partial<GatewayConfig>,
   ): Promise<void> {
-    await this.repo.update({ gateway }, updates);
+    await this.repo.update({ gateway }, updates as any);
   }
 }

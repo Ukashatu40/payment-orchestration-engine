@@ -14,6 +14,7 @@ import { TransactionState, PaymentGateway } from '../../../src/common/enums';
 // ----------------------------------------------------------------
 function makeTransaction(
   overrides: Partial<{
+    id: string;
     state: TransactionState;
     gateway: PaymentGateway;
     gatewayReference: string;

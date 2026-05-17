@@ -9,14 +9,14 @@ import { PaymentGateway, PaymentMethod } from '../../../common/enums';
 @Index(['gateway', 'paymentMethod', 'recordedAt'])
 export class GatewayHealthMetrics {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({
     name: 'gateway',
     type: 'enum',
     enum: PaymentGateway,
   })
-  gateway: PaymentGateway;
+  gateway!: PaymentGateway;
 
   @Column({
     name: 'payment_method',
@@ -24,22 +24,22 @@ export class GatewayHealthMetrics {
     enum: PaymentMethod,
     nullable: true,
   })
-  paymentMethod: PaymentMethod | null;
+  paymentMethod!: PaymentMethod | null;
 
   @Column({ name: 'success_count', type: 'int', default: 0 })
-  successCount: number;
+  successCount!: number;
 
   @Column({ name: 'total_count', type: 'int', default: 0 })
-  totalCount: number;
+  totalCount!: number;
 
   // P95 latency in milliseconds for auth requests
   @Column({ name: 'p95_latency_ms', type: 'int', nullable: true })
-  p95LatencyMs: number | null;
+  p95LatencyMs!: number | null;
 
   @Column({ name: 'avg_latency_ms', type: 'int', nullable: true })
-  avgLatencyMs: number | null;
+  avgLatencyMs!: number | null;
 
   @Index()
   @Column({ name: 'recorded_at', type: 'timestamptz' })
-  recordedAt: Date;
+  recordedAt!: Date;
 }

@@ -9,22 +9,22 @@ import { Transaction } from '../entities/transaction.entity';
 
 // Shapes the API response — converts bigint to number for JSON
 export class PaymentResponseDto {
-  id: string;
-  merchantId: string;
-  merchantOrderId: string;
-  amountPaise: number; // bigint → number for JSON serialisation
-  amountRupees: number;
-  capturedPaise: number;
-  refundedPaise: number;
-  currency: string;
-  state: TransactionState;
-  paymentMethod: PaymentMethod;
-  gateway: PaymentGateway | null;
-  gatewayPaymentId: string | null;
-  gatewayReference: string | null;
-  traceId: string;
-  createdAt: Date;
-  updatedAt: Date;
+  id!: string;
+  merchantId!: string;
+  merchantOrderId!: string;
+  amountPaise!: number; // bigint → number for JSON serialisation
+  amountRupees!: number;
+  capturedPaise!: number;
+  refundedPaise!: number;
+  currency!: string;
+  state!: TransactionState;
+  paymentMethod!: PaymentMethod;
+  gateway!: PaymentGateway | null;
+  gatewayPaymentId!: string | null;
+  gatewayReference!: string | null;
+  traceId!: string;
+  createdAt!: Date;
+  updatedAt!: Date;
 
   static fromEntity(txn: Transaction): PaymentResponseDto {
     const dto = new PaymentResponseDto();

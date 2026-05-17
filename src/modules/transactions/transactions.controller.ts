@@ -20,8 +20,7 @@ import { RefundPaymentRequestDto } from './dto/refund-payment.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { PaymentResponseDto } from './dto/payment-response.dto';
 
-@Controller('payments')
-@Version('1')
+@Controller({ path: 'payments', version: '1' })
 export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 

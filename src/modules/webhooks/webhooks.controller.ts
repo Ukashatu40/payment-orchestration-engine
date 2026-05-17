@@ -12,15 +12,14 @@ import {
   Query,
   Version,
 } from '@nestjs/common';
-import { FastifyRequest } from 'fastify';
+import { type FastifyRequest } from 'fastify';
 import { WebhookSignatureService } from './verification/webhook-signature.service';
 import { WebhookQueueService } from './webhook-queue.service';
 import { WebhookProcessorService } from './webhook-processor.service';
 import { GatewayConfigRepository } from '../gateways/repositories/gateway-config.repository';
 import { PaymentGateway } from '../../common/enums';
 
-@Controller('webhooks')
-@Version('1')
+@Controller({ path: 'webhooks', version: '1' })
 export class WebhooksController {
   constructor(
     private readonly signatureService: WebhookSignatureService,

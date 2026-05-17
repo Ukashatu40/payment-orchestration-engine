@@ -18,21 +18,21 @@ export class ProcessedWebhookEvent {
     type: 'enum',
     enum: PaymentGateway,
   })
-  gateway: PaymentGateway;
+  gateway!: PaymentGateway;
 
   @PrimaryColumn({ name: 'event_id', type: 'varchar', length: 255 })
-  eventId: string;
+  eventId!: string;
 
   @Column({ name: 'event_type', type: 'varchar', length: 100 })
-  eventType: string;
+  eventType!: string;
 
   @Column({ name: 'payload_hash', type: 'varchar', length: 64 })
-  payloadHash: string;
+  payloadHash!: string;
 
   @Index()
   @Column({ name: 'transaction_id', type: 'uuid', nullable: true })
-  transactionId: string | null;
+  transactionId!: string | null;
 
   @CreateDateColumn({ name: 'processed_at', type: 'timestamptz' })
-  processedAt: Date;
+  processedAt!: Date;
 }

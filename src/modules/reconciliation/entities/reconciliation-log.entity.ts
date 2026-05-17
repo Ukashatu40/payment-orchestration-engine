@@ -22,14 +22,14 @@ export enum DiscrepancyType {
 @Index(['runId'])
 export class ReconciliationLog {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   // Groups all records from a single reconciliation run
   @Column({ name: 'run_id', type: 'uuid' })
-  runId: string;
+  runId!: string;
 
   @Column({ name: 'transaction_id', type: 'uuid', nullable: true })
-  transactionId: string | null;
+  transactionId!: string | null;
 
   @Column({
     name: 'gateway',
@@ -37,7 +37,7 @@ export class ReconciliationLog {
     enum: PaymentGateway,
     nullable: true,
   })
-  gateway: PaymentGateway | null;
+  gateway!: PaymentGateway | null;
 
   @Column({
     name: 'discrepancy_type',
@@ -45,7 +45,7 @@ export class ReconciliationLog {
     length: 100,
     nullable: true,
   })
-  discrepancyType: DiscrepancyType | null;
+  discrepancyType!: DiscrepancyType | null;
 
   @Column({
     name: 'internal_state',
@@ -53,7 +53,7 @@ export class ReconciliationLog {
     length: 50,
     nullable: true,
   })
-  internalState: string | null;
+  internalState!: string | null;
 
   @Column({
     name: 'gateway_state',
@@ -61,18 +61,18 @@ export class ReconciliationLog {
     length: 50,
     nullable: true,
   })
-  gatewayState: string | null;
+  gatewayState!: string | null;
 
   // true = human review required, false = auto-resolved
   @Column({ name: 'requires_review', type: 'boolean', default: false })
-  requiresReview: boolean;
+  requiresReview!: boolean;
 
   @Column({ name: 'resolved', type: 'boolean', default: false })
-  resolved: boolean;
+  resolved!: boolean;
 
   @Column({ name: 'notes', type: 'text', nullable: true })
-  notes: string | null;
+  notes!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 }

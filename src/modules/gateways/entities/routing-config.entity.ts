@@ -7,7 +7,7 @@ import { Entity, Column, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 @Entity('routing_config')
 export class RoutingConfig {
   @PrimaryColumn({ name: 'config_key', type: 'varchar', length: 100 })
-  configKey: string;
+  configKey!: string;
 
   // Routing weights — must sum to 1.0 (validated at service layer)
   @Column({
@@ -17,7 +17,7 @@ export class RoutingConfig {
     scale: 3,
     default: 0.35,
   })
-  weightSuccessRate: number;
+  weightSuccessRate!: number;
 
   @Column({
     name: 'weight_latency',
@@ -26,7 +26,7 @@ export class RoutingConfig {
     scale: 3,
     default: 0.2,
   })
-  weightLatency: number;
+  weightLatency!: number;
 
   @Column({
     name: 'weight_cost',
@@ -35,7 +35,7 @@ export class RoutingConfig {
     scale: 3,
     default: 0.2,
   })
-  weightCost: number;
+  weightCost!: number;
 
   @Column({
     name: 'weight_health',
@@ -44,7 +44,7 @@ export class RoutingConfig {
     scale: 3,
     default: 0.15,
   })
-  weightHealth: number;
+  weightHealth!: number;
 
   @Column({
     name: 'weight_fit',
@@ -53,11 +53,11 @@ export class RoutingConfig {
     scale: 3,
     default: 0.1,
   })
-  weightFit: number;
+  weightFit!: number;
 
   // Sliding window in minutes for success rate / latency calc
   @Column({ name: 'sliding_window_minutes', type: 'int', default: 10 })
-  slidingWindowMinutes: number;
+  slidingWindowMinutes!: number;
 
   // If degraded gateway scores within this % of next-best, skip it
   @Column({
@@ -67,8 +67,8 @@ export class RoutingConfig {
     scale: 3,
     default: 0.2,
   })
-  degradedSkipThreshold: number;
+  degradedSkipThreshold!: number;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
 }

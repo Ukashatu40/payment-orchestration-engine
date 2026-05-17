@@ -13,26 +13,26 @@ import {
 @Index(['merchantId', 'merchantOrderId'], { unique: true })
 export class Transaction extends BaseEntity {
   @Column({ name: 'merchant_id', type: 'uuid' })
-  merchantId: string;
+  merchantId!: string;
 
   @Column({ name: 'merchant_order_id', type: 'varchar', length: 255 })
-  merchantOrderId: string;
+  merchantOrderId!: string;
 
   // ----------------------------------------------------------------
   // Financial amounts — all stored as BIGINT paise (ADR-002)
   // NEVER use number type here — TypeScript bigint enforces this
   // ----------------------------------------------------------------
   @Column({ name: 'amount_paise', type: 'bigint' })
-  amountPaise: bigint;
+  amountPaise!: bigint;
 
   @Column({ name: 'captured_paise', type: 'bigint', default: 0 })
-  capturedPaise: bigint;
+  capturedPaise!: bigint;
 
   @Column({ name: 'refunded_paise', type: 'bigint', default: 0 })
-  refundedPaise: bigint;
+  refundedPaise!: bigint;
 
   @Column({ name: 'currency', type: 'char', length: 3, default: 'INR' })
-  currency: string;
+  currency!: string;
 
   // ----------------------------------------------------------------
   // State machine fields
@@ -43,14 +43,14 @@ export class Transaction extends BaseEntity {
     enum: TransactionState,
     default: TransactionState.CREATED,
   })
-  state: TransactionState;
+  state!: TransactionState;
 
   @Column({
     name: 'payment_method',
     type: 'enum',
     enum: PaymentMethod,
   })
-  paymentMethod: PaymentMethod;
+  paymentMethod!: PaymentMethod;
 
   @Column({
     name: 'gateway',
@@ -58,7 +58,7 @@ export class Transaction extends BaseEntity {
     enum: PaymentGateway,
     nullable: true,
   })
-  gateway: PaymentGateway | null;
+  gateway!: PaymentGateway | null;
 
   // ----------------------------------------------------------------
   // Gateway reference IDs
@@ -69,7 +69,7 @@ export class Transaction extends BaseEntity {
     length: 255,
     nullable: true,
   })
-  gatewayOrderId: string | null;
+  gatewayOrderId!: string | null;
 
   @Column({
     name: 'gateway_payment_id',
@@ -77,7 +77,7 @@ export class Transaction extends BaseEntity {
     length: 255,
     nullable: true,
   })
-  gatewayPaymentId: string | null;
+  gatewayPaymentId!: string | null;
 
   @Column({
     name: 'gateway_reference',
@@ -85,13 +85,13 @@ export class Transaction extends BaseEntity {
     length: 255,
     nullable: true,
   })
-  gatewayReference: string | null;
+  gatewayReference!: string | null;
 
   // ----------------------------------------------------------------
   // Optimistic lock version (A8.1 — used for non-critical reads)
   // ----------------------------------------------------------------
   @VersionColumn({ name: 'version' })
-  version: number;
+  version!: number;
 
   // ----------------------------------------------------------------
   // Distributed tracing (Section A8.5)
@@ -101,7 +101,7 @@ export class Transaction extends BaseEntity {
     type: 'uuid',
     generated: 'uuid',
   })
-  traceId: string;
+  traceId!: string;
 
   // ----------------------------------------------------------------
   // Idempotency — scoped to merchant (FS-13)
@@ -111,7 +111,7 @@ export class Transaction extends BaseEntity {
     type: 'varchar',
     length: 255,
   })
-  idempotencyKey: string;
+  idempotencyKey!: string;
 
   // ----------------------------------------------------------------
   // Auth hold expiry — for UPI mandate window and gateway holds
@@ -121,7 +121,7 @@ export class Transaction extends BaseEntity {
     type: 'timestamptz',
     nullable: true,
   })
-  authExpiresAt: Date | null;
+  authExpiresAt!: Date | null;
 
   // ----------------------------------------------------------------
   // Failure context
@@ -131,14 +131,14 @@ export class Transaction extends BaseEntity {
     type: 'text',
     nullable: true,
   })
-  failureReason: string | null;
+  failureReason!: string | null;
 
   @Column({
     name: 'metadata',
     type: 'jsonb',
     default: {},
   })
-  metadata: Record<string, unknown>;
+  metadata!: Record<string, unknown>;
 
   // ----------------------------------------------------------------
   // Relations — declared here, no circular imports
@@ -148,12 +148,12 @@ export class Transaction extends BaseEntity {
     (log) => log.transaction,
     { cascade: false }, // logs are immutable, never cascade
   )
-  stateLogs: TransactionStateLog[];
+  stateLogs!: TransactionStateLog[];
 
   // Add inside the Transaction class, after the stateLogs relation
 
   @OneToMany(() => Refund, (refund) => refund.transaction, { cascade: false })
-  refunds: Refund[];
+  refunds!: Refund[];
 
   // ----------------------------------------------------------------
   // Computed helper — display amount in rupees (never used in DB ops)

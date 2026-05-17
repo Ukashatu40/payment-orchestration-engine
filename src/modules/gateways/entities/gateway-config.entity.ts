@@ -10,27 +10,27 @@ export class GatewayConfig {
     type: 'enum',
     enum: PaymentGateway,
   })
-  gateway: PaymentGateway;
+  gateway!: PaymentGateway;
 
   @Column({ name: 'is_enabled', type: 'boolean', default: true })
-  isEnabled: boolean;
+  isEnabled!: boolean;
 
   // Supported payment methods as array
   @Column({
     name: 'supported_methods',
     type: 'simple-array',
   })
-  supportedMethods: PaymentMethod[];
+  supportedMethods!: PaymentMethod[];
 
   // Circuit breaker config — changeable without redeployment (Section A3.3)
   @Column({ name: 'cb_failure_threshold', type: 'int', default: 5 })
-  cbFailureThreshold: number;
+  cbFailureThreshold!: number;
 
   @Column({ name: 'cb_timeout_ms', type: 'int', default: 30000 })
-  cbTimeoutMs: number;
+  cbTimeoutMs!: number;
 
   @Column({ name: 'cb_half_open_requests', type: 'int', default: 1 })
-  cbHalfOpenRequests: number;
+  cbHalfOpenRequests!: number;
 
   // Cost structure for routing algorithm (Section A3.1)
   @Column({
@@ -40,25 +40,25 @@ export class GatewayConfig {
     scale: 4,
     default: 0,
   })
-  costPercentage: number; // e.g. 0.02 for 2%
+  costPercentage!: number; // e.g. 0.02 for 2%
 
   @Column({
     name: 'cost_fixed_paise',
     type: 'bigint',
     default: 0,
   })
-  costFixedPaise: bigint; // fixed fee per transaction in paise
+  costFixedPaise!: bigint; // fixed fee per transaction in paise
 
   // Request timeout per gateway (Section A1.3)
   @Column({ name: 'timeout_ms', type: 'int', default: 30000 })
-  timeoutMs: number;
+  timeoutMs!: number;
 
   // Rate limit (Section A8.4)
   @Column({ name: 'rate_limit_per_sec', type: 'int', default: 100 })
-  rateLimitPerSec: number;
+  rateLimitPerSec!: number;
 
   @Column({ name: 'api_key', type: 'varchar', length: 500, nullable: true })
-  apiKey: string | null;
+  apiKey!: string | null;
 
   @Column({
     name: 'webhook_secret',
@@ -66,8 +66,8 @@ export class GatewayConfig {
     length: 500,
     nullable: true,
   })
-  webhookSecret: string | null;
+  webhookSecret!: string | null;
 
   @Column({ name: 'metadata', type: 'jsonb', default: {} })
-  metadata: Record<string, unknown>;
+  metadata!: Record<string, unknown>;
 }

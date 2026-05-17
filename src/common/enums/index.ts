@@ -5,3 +5,5 @@ export * from './transaction-state.enum';
 export * from './payment-gateway.enum';
 export * from './payment-method.enum';
 export * from './webhook-status.enum';
+export * from './refund-state.enum';
+export * from './discrepancy-type.enum';

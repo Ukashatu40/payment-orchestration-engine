@@ -19,8 +19,7 @@ import { RoutingConfig } from './entities/routing-config.entity';
 import { UpdateRoutingConfigDto } from './dto/update-routing-config.dto';
 import { PaymentGateway } from '../../common/enums';
 
-@Controller('gateways')
-@Version('1')
+@Controller({ path: 'gateways', version: '1' })
 export class GatewaysController {
   constructor(
     private readonly gatewayConfigRepo: GatewayConfigRepository,

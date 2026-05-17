@@ -12,37 +12,30 @@ import {
 } from 'typeorm';
 import { Transaction } from './transaction.entity';
 import { PaymentGateway } from '../../../common/enums';
-
-export enum RefundState {
-  INITIATED = 'INITIATED',
-  PROCESSING = 'PROCESSING',
-  COMPLETED = 'COMPLETED',
-  FAILED = 'FAILED',
-  PARTIALLY_COMPLETED = 'PARTIALLY_COMPLETED',
-}
+import { RefundState } from '../../../common/enums';
 
 @Entity('refunds')
 @Index(['transactionId'])
 @Index(['gateway', 'gatewayRefundId'])
 export class Refund {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   @Column({ name: 'transaction_id', type: 'uuid' })
-  transactionId: string;
+  transactionId!: string;
 
   @ManyToOne(() => Transaction, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'transaction_id' })
-  transaction: Transaction;
+  transaction!: Transaction;
 
   // ----------------------------------------------------------------
   // Financial amount — BIGINT paise (ADR-002)
   // ----------------------------------------------------------------
   @Column({ name: 'amount_paise', type: 'bigint' })
-  amountPaise: bigint;
+  amountPaise!: bigint;
 
   @Column({ name: 'currency', type: 'char', length: 3, default: 'INR' })
-  currency: string;
+  currency!: string;
 
   // ----------------------------------------------------------------
   // State
@@ -53,7 +46,7 @@ export class Refund {
     enum: RefundState,
     default: RefundState.INITIATED,
   })
-  state: RefundState;
+  state!: RefundState;
 
   // ----------------------------------------------------------------
   // Gateway fields
@@ -63,7 +56,7 @@ export class Refund {
     type: 'enum',
     enum: PaymentGateway,
   })
-  gateway: PaymentGateway;
+  gateway!: PaymentGateway;
 
   @Column({
     name: 'gateway_refund_id',
@@ -71,16 +64,16 @@ export class Refund {
     length: 255,
     nullable: true,
   })
-  gatewayRefundId: string | null;
+  gatewayRefundId!: string | null;
 
   // ----------------------------------------------------------------
   // Audit context
   // ----------------------------------------------------------------
   @Column({ name: 'initiated_by', type: 'varchar', length: 100 })
-  initiatedBy: string;
+  initiatedBy!: string;
 
   @Column({ name: 'reason', type: 'text', nullable: true })
-  reason: string | null;
+  reason!: string | null;
 
   // Idempotency for refund requests — prevents duplicate refunds
   @Column({
@@ -90,19 +83,19 @@ export class Refund {
     nullable: true,
   })
   @Index({ unique: true, sparse: true })
-  idempotencyKey: string | null;
+  idempotencyKey!: string | null;
 
   @Column({ name: 'failure_reason', type: 'text', nullable: true })
-  failureReason: string | null;
+  failureReason!: string | null;
 
   @Column({ name: 'metadata', type: 'jsonb', default: {} })
-  metadata: Record<string, unknown>;
+  metadata!: Record<string, unknown>;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt!: Date;
 
   // ----------------------------------------------------------------
   // Computed helper — display only, never used in DB operations

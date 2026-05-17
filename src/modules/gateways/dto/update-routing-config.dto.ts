@@ -6,25 +6,25 @@ export class UpdateRoutingConfigDto {
   @IsNumber()
   @Min(0)
   @Max(1)
-  weightSuccessRate: number;
+  weightSuccessRate!: number;
 
   @IsNumber()
   @Min(0)
   @Max(1)
-  weightLatency: number;
+  weightLatency!: number;
 
   @IsNumber()
   @Min(0)
   @Max(1)
-  weightCost: number;
+  weightCost!: number;
 
   @IsNumber()
   @Min(0)
   @Max(1)
-  weightHealth: number;
+  weightHealth!: number;
 
   @IsNumber()
   @Min(0)
   @Max(1)
-  weightFit: number;
+  weightFit!: number;
 }

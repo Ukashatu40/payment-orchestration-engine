@@ -59,7 +59,7 @@ export class IdempotencyKeyRepository {
       {
         status: 'COMPLETED',
         responseCode,
-        responseBody,
+        responseBody: responseBody as any,
         transactionId,
       },
     );

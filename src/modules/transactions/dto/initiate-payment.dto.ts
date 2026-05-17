@@ -14,20 +14,20 @@ import { PaymentMethod } from '../../../common/enums';
 export class InitiatePaymentRequestDto {
   @IsString()
   @IsNotEmpty()
-  merchantOrderId: string;
+  merchantOrderId!: string;
 
   // Accepts number from JSON body, transforms to bigint
   // Validation runs after transform
   @Transform(({ value }) => BigInt(value))
   @Min(1)
-  amountPaise: bigint;
+  amountPaise!: bigint;
 
   @IsString()
   @IsNotEmpty()
   currency: string = 'INR';
 
   @IsEnum(PaymentMethod)
-  paymentMethod: PaymentMethod;
+  paymentMethod!: PaymentMethod;
 
   @IsOptional()
   @IsObject()
