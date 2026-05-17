@@ -1,6 +1,6 @@
 // src/app.controller.ts
 
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Version } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 @Controller()
@@ -9,6 +9,7 @@ export class AppController {
 
   // GET /api/v1/health
   @Get('health')
+  @Version('1')
   async health() {
     let dbStatus = 'ok';
 

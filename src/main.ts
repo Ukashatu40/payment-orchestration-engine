@@ -17,14 +17,20 @@ async function bootstrap() {
       bodyLimit: 1_048_576,
       connectionTimeout: 65_000,
     }),
+    {
+      // Tell NestJS not to register any body parser
+      // We register our own below to capture rawBody
+      bodyParser: false,
+    },
   );
 
   const configService = app.get(ConfigService);
 
-  // Raw body for webhook signature verification (Deliberate Error 5 fix)
-  // Must remove existing parser before adding ours
+  // Register our own JSON parser that captures rawBody first.
+  // This runs before NestJS tries to register its own parser.
+  // Satisfies Deliberate Error 5 fix — uses raw buffer for HMAC.
   const fastify = app.getHttpAdapter().getInstance();
-  fastify.removeContentTypeParser('application/json');
+
   fastify.addContentTypeParser(
     'application/json',
     { parseAs: 'buffer' },
