@@ -15,9 +15,10 @@ export class ApiKeyGuard implements CanActivate {
   private readonly logger = new Logger(ApiKeyGuard.name);
   private readonly validKeys: Set<string>;
 
+  // Routes that bypass API key authentication
+  private readonly publicPaths = ['/api/v1/webhooks/', '/api/v1/health'];
+
   constructor(private readonly configService: ConfigService) {
-    // Support multiple API keys — comma-separated in env
-    // e.g. API_KEYS=key1,key2,key3
     const raw = this.configService.get<string>('API_KEYS', '');
     this.validKeys = new Set(
       raw
@@ -29,6 +30,13 @@ export class ApiKeyGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<FastifyRequest>();
+
+    // Skip API key check for public paths
+    const isPublic = this.publicPaths.some((path) =>
+      request.url.startsWith(path),
+    );
+
+    if (isPublic) return true;
 
     const apiKey = request.headers['x-api-key'] as string | undefined;
 
