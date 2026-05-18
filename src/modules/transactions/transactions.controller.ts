@@ -32,6 +32,9 @@ export class TransactionsController {
     @Headers('x-merchant-id') merchantId: string,
     @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-trace-id') traceId: string,
+    @Headers('x-mock-response') mockResponse?: string,
+    @Headers('x-mock-delay-ms') mockDelayMs?: string,
+    @Headers('x-mock-gateway-down') mockGatewayDown?: string,
   ): Promise<PaymentResponseDto> {
     const transaction = await this.transactionsService.initiatePayment({
       merchantId,
@@ -41,7 +44,15 @@ export class TransactionsController {
       paymentMethod: body.paymentMethod,
       idempotencyKey,
       traceId,
-      metadata: body.metadata,
+      metadata: {
+        ...body.metadata,
+        // Pass mock control headers through to gateway adapters (Section B4.3)
+        ...(mockResponse && { 'x-mock-response': mockResponse }),
+        ...(mockDelayMs && { 'x-mock-delay-ms': parseInt(mockDelayMs) }),
+        ...(mockGatewayDown && {
+          'x-mock-gateway-down': mockGatewayDown === 'true',
+        }),
+      },
     });
 
     return PaymentResponseDto.fromEntity(transaction);

@@ -53,8 +53,10 @@ export abstract class BaseMockAdapter {
 
     // Simulate timeout — throws before returning any response (FS-01)
     if (control.mockResponse === MockResponse.TIMEOUT) {
-      await this.delay(30_000); // simulate 30s with no response
-      throw new GatewayTimeoutException(gateway, 30_000, transactionId);
+      // Use configured timeout or short default for tests
+      const timeoutMs = control.mockDelayMs ?? 100;
+      await this.delay(timeoutMs);
+      throw new GatewayTimeoutException(gateway, timeoutMs, transactionId);
     }
 
     // Simulate 5xx server error (FS-04)
