@@ -36,6 +36,7 @@ export class TransactionsController {
     @Headers('x-mock-delay-ms') mockDelayMs?: string,
     @Headers('x-mock-gateway-down') mockGatewayDown?: string,
   ): Promise<PaymentResponseDto> {
+    console.log('merchantId from header:', merchantId);
     const transaction = await this.transactionsService.initiatePayment({
       merchantId,
       merchantOrderId: body.merchantOrderId,

@@ -6,6 +6,7 @@ import {
   IsEnum,
   IsOptional,
   IsObject,
+  IsInt,
   Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
@@ -16,10 +17,17 @@ export class InitiatePaymentRequestDto {
   @IsNotEmpty()
   merchantOrderId!: string;
 
-  // Accepts number from JSON body, transforms to bigint
-  // Validation runs after transform
-  @Transform(({ value }) => BigInt(value))
+  // Store as bigint but validate the raw number before transforming
+  // class-validator @Min does not support bigint — validate as number first
+  @IsInt()
   @Min(1)
+  @Transform(({ value }) => {
+    const num = Number(value);
+    if (!Number.isInteger(num) || num < 1) {
+      throw new Error('amountPaise must be a positive integer');
+    }
+    return BigInt(num);
+  })
   amountPaise!: bigint;
 
   @IsString()

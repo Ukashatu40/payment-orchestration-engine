@@ -1,5 +1,8 @@
 // test/integration/helpers/app.helper.ts
-
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+// Load test environment before building the app
+dotenv.config({ path: path.join(__dirname, '../../../.env.test') });
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   INestApplication,

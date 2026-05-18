@@ -1,12 +1,14 @@
 // src/modules/transactions/dto/capture-payment.dto.ts
 
-import { IsOptional, Min } from 'class-validator';
+import { IsOptional, IsInt, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CapturePaymentRequestDto {
-  // Optional — omit to capture full authorised amount (FS-05)
   @IsOptional()
-  @Transform(({ value }) => (value !== undefined ? BigInt(value) : undefined))
+  @IsInt()
   @Min(1)
+  @Transform(({ value }) =>
+    value !== undefined ? BigInt(Number(value)) : undefined,
+  )
   amountPaise?: bigint;
 }
