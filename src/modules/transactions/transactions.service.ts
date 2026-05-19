@@ -85,7 +85,7 @@ export class TransactionsService {
     const transaction = await this.transactionRepo.create({
       merchantId: dto.merchantId,
       merchantOrderId: dto.merchantOrderId,
-      amountPaise: dto.amountPaise,
+      amountPaise: BigInt(dto.amountPaise), // convert here
       currency: dto.currency,
       paymentMethod: dto.paymentMethod,
       idempotencyKey: dto.idempotencyKey,
@@ -178,7 +178,7 @@ export class TransactionsService {
         authResponse = await adapter.authorise({
           transactionId: transaction.id,
           merchantId: dto.merchantId,
-          amountPaise: dto.amountPaise,
+          amountPaise: BigInt(dto.amountPaise),
           currency: dto.currency,
           paymentMethod: dto.paymentMethod,
           idempotencyKey: dto.idempotencyKey,
@@ -322,7 +322,9 @@ export class TransactionsService {
   // ----------------------------------------------------------------
   async capturePayment(dto: CapturePaymentDto): Promise<Transaction> {
     const transaction = await this.findOrThrow(dto.transactionId);
-    const captureAmount = dto.amountPaise ?? transaction.amountPaise;
+    const captureAmount = dto.amountPaise
+      ? BigInt(dto.amountPaise)
+      : transaction.amountPaise;
 
     // Transition to CAPTURE_INITIATED (lock released before gateway call)
     await this.stateMachine.transition(
@@ -425,7 +427,7 @@ export class TransactionsService {
         transactionId: transaction.id,
         refundId: uuidv4(),
         gatewayPaymentId: transaction.gatewayPaymentId!,
-        amountPaise: dto.amountPaise,
+        amountPaise: BigInt(dto.amountPaise),
         currency: transaction.currency,
         reason: dto.reason,
         traceId: dto.traceId,
@@ -468,7 +470,7 @@ export class TransactionsService {
       .getRepository(Transaction)
       .update(
         { id: transaction.id },
-        { refundedPaise: transaction.refundedPaise + dto.amountPaise },
+        { refundedPaise: transaction.refundedPaise + BigInt(dto.amountPaise) },
       );
 
     return refunded;

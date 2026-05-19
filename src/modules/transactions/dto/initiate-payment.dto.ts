@@ -9,7 +9,6 @@ import {
   IsInt,
   Min,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
 import { PaymentMethod } from '../../../common/enums';
 
 export class InitiatePaymentRequestDto {
@@ -17,18 +16,11 @@ export class InitiatePaymentRequestDto {
   @IsNotEmpty()
   merchantOrderId!: string;
 
-  // Store as bigint but validate the raw number before transforming
-  // class-validator @Min does not support bigint — validate as number first
+  // Keep as number — TypeORM handles number → BIGINT conversion
+  // Services convert to bigint when passing to entities
   @IsInt()
   @Min(1)
-  @Transform(({ value }) => {
-    const num = Number(value);
-    if (!Number.isInteger(num) || num < 1) {
-      throw new Error('amountPaise must be a positive integer');
-    }
-    return BigInt(num);
-  })
-  amountPaise!: bigint;
+  amountPaise!: number;
 
   @IsString()
   @IsNotEmpty()

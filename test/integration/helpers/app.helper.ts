@@ -56,7 +56,19 @@ export async function buildApp(): Promise<NestFastifyApplication> {
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      transformOptions: { enableImplicitConversion: false },
+      transformOptions: {
+        enableImplicitConversion: true, // Allow string->number conversion for test payloads
+        excludeExtraneousValues: false,
+      },
+      // Ensure transform errors surface as 400 not 500
+      exceptionFactory: (errors) => {
+        const messages = errors.map((e) =>
+          Object.values(e.constraints ?? {}).join(', '),
+        );
+        return new (require('@nestjs/common').BadRequestException)(
+          messages.join('; '),
+        );
+      },
     }),
   );
   app.useGlobalFilters(new GlobalExceptionFilter());

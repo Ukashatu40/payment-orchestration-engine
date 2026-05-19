@@ -11,7 +11,6 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
-  Version,
 } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { InitiatePaymentRequestDto } from './dto/initiate-payment.dto';

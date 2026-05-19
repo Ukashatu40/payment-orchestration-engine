@@ -48,10 +48,19 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: true,
       transform: true,
       transformOptions: {
         enableImplicitConversion: false,
+        excludeExtraneousValues: false,
+      },
+      // Ensure transform errors surface as 400 not 500
+      exceptionFactory: (errors) => {
+        const messages = errors.map((e) =>
+          Object.values(e.constraints ?? {}).join(', '),
+        );
+        return new (require('@nestjs/common').BadRequestException)(
+          messages.join('; '),
+        );
       },
     }),
   );

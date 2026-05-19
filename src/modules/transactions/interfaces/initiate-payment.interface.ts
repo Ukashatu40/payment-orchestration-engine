@@ -5,7 +5,7 @@ import { PaymentMethod } from '../../../common/enums';
 export interface InitiatePaymentDto {
   merchantId: string;
   merchantOrderId: string;
-  amountPaise: bigint;
+  amountPaise: number; // number from DTO, converted to bigint when saving
   currency: string;
   paymentMethod: PaymentMethod;
   idempotencyKey: string;
@@ -15,14 +15,14 @@ export interface InitiatePaymentDto {
 
 export interface CapturePaymentDto {
   transactionId: string;
-  amountPaise?: bigint; // omit = capture full authorised amount
+  amountPaise?: number;
   traceId: string;
   triggeredBy: string;
 }
 
 export interface RefundPaymentDto {
   transactionId: string;
-  amountPaise: bigint;
+  amountPaise: number;
   reason?: string;
   idempotencyKey: string;
   traceId: string;
