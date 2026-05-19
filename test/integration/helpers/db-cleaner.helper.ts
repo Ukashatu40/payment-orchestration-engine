@@ -2,7 +2,6 @@
 
 import { DataSource } from 'typeorm';
 
-// Truncates all tables between tests — order matters due to FK constraints
 export async function cleanDatabase(dataSource: DataSource): Promise<void> {
   await dataSource.query(`
     TRUNCATE TABLE
@@ -16,4 +15,6 @@ export async function cleanDatabase(dataSource: DataSource): Promise<void> {
       transactions
     RESTART IDENTITY CASCADE
   `);
+  // Do NOT truncate gateway_config, routing_config, gateway_health_metrics
+  // These are seeded by migrations and must persist across tests
 }

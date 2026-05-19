@@ -21,6 +21,8 @@ describe('FS-03: Double Submit by Customer', () => {
   });
   beforeEach(async () => {
     await cleanDatabase(getDataSource());
+    const configs = await getDataSource().query('SELECT * FROM gateway_config');
+    console.log('Gateway configs:', configs.length, configs);
   });
 
   it('should prevent double charge when same idempotency key submitted concurrently', async () => {

@@ -82,6 +82,11 @@ export async function buildApp(): Promise<NestFastifyApplication> {
 
   dataSource = moduleFixture.get<DataSource>(DataSource);
 
+  // Add to app.helper.ts after buildApp completes
+  const ds = moduleFixture.get<DataSource>(DataSource);
+  const configs = await ds.query('SELECT gateway FROM gateway_config');
+  console.log('Gateway configs in test DB:', configs);
+
   return app;
 }
 

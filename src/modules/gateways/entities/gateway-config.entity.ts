@@ -15,10 +15,12 @@ export class GatewayConfig {
   @Column({ name: 'is_enabled', type: 'boolean', default: true })
   isEnabled!: boolean;
 
-  // Supported payment methods as array
+  // After — use text array, PostgreSQL handles it natively
   @Column({
     name: 'supported_methods',
-    type: 'simple-array',
+    type: 'text',
+    array: true,
+    default: '{}',
   })
   supportedMethods!: PaymentMethod[];
 

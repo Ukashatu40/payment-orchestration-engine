@@ -30,6 +30,7 @@ export class CreateRoutingConfigAndSeed1748000000010 implements MigrationInterfa
     await queryRunner.query(`
       INSERT INTO routing_config (config_key)
       VALUES ('default')
+      ON CONFLICT (config_key) DO NOTHING
     `);
 
     // -- Seed historical performance data from Section A3.4

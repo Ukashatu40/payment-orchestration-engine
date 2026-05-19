@@ -42,7 +42,13 @@ export class GatewaysController {
         config.supportedMethods[0],
       ),
       circuitState: states.find((s) => s.gateway === config.gateway)?.state,
-      supportedMethods: config.supportedMethods,
+      // Parse the PostgreSQL array string if TypeORM returns it as string
+      supportedMethods: Array.isArray(config.supportedMethods)
+        ? config.supportedMethods
+        : (config.supportedMethods as unknown as string)
+            .replace(/^{|}$/g, '')
+            .split(',')
+            .filter(Boolean),
     }));
   }
 

@@ -7,7 +7,7 @@ export class CreateGatewayConfig1748000000009 implements MigrationInterface {
       CREATE TABLE gateway_config (
         gateway               payment_gateway PRIMARY KEY,
         is_enabled            BOOLEAN NOT NULL DEFAULT TRUE,
-        supported_methods     payment_method[] NOT NULL DEFAULT '{}',
+        supported_methods text[] NOT NULL DEFAULT '{}',
 
         -- Circuit breaker config (Section A3.3)
         -- Stored in DB so changeable without redeployment
@@ -36,33 +36,25 @@ export class CreateGatewayConfig1748000000009 implements MigrationInterface {
 
     //-- Seed with gateway-specific values from Section A1.3 and A3.4
     await queryRunner.query(`
-      INSERT INTO gateway_config (
-        gateway, is_enabled, supported_methods,
-        cb_failure_threshold, cb_timeout_ms,
-        cost_percentage, cost_fixed_paise,
-        timeout_ms, rate_limit_per_sec
-      ) VALUES
-        (
-          'RAZORPAY', TRUE,
-          ARRAY['CARD_CREDIT','CARD_DEBIT','NET_BANKING','WALLET']::payment_method[],
-          5, 30000, 0.02, 200, 30000, 200
-        ),
-        (
-          'STRIPE', TRUE,
-          ARRAY['CARD_CREDIT','CARD_DEBIT']::payment_method[],
-          5, 30000, 0.025, 300, 30000, 100
-        ),
-        (
-          'PAYU', TRUE,
-          ARRAY['CARD_CREDIT','CARD_DEBIT','NET_BANKING','WALLET']::payment_method[],
-          5, 45000, 0.018, 150, 45000, 150
-        ),
-        (
-          'UPI', TRUE,
-          ARRAY['UPI']::payment_method[],
-          5, 60000, 0.0, 0, 60000, 100
-        )
-    `);
+  INSERT INTO gateway_config (
+    gateway, is_enabled, supported_methods,
+    cb_failure_threshold, cb_timeout_ms,
+    cost_percentage, cost_fixed_paise,
+    timeout_ms, rate_limit_per_sec
+  ) VALUES
+    ('RAZORPAY', TRUE,
+     '{CARD_CREDIT,CARD_DEBIT,NET_BANKING,WALLET}',
+     5, 30000, 0.02, 200, 30000, 200),
+    ('STRIPE', TRUE,
+     '{CARD_CREDIT,CARD_DEBIT}',
+     5, 30000, 0.025, 300, 30000, 100),
+    ('PAYU', TRUE,
+     '{CARD_CREDIT,CARD_DEBIT,NET_BANKING,WALLET}',
+     5, 45000, 0.018, 150, 45000, 150),
+    ('UPI', TRUE,
+     '{UPI}',
+     5, 60000, 0.0, 0, 60000, 100)
+`);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

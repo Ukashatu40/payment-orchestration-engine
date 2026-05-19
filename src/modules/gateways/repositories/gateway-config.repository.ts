@@ -27,8 +27,8 @@ export class GatewayConfigRepository {
     return this.repo
       .createQueryBuilder('gc')
       .where('gc.is_enabled = TRUE')
-      .andWhere(':method = ANY(gc.supported_methods)', {
-        method: paymentMethod,
+      .andWhere(`gc.supported_methods::text LIKE :pattern`, {
+        pattern: `%${paymentMethod}%`,
       })
       .getMany();
   }
