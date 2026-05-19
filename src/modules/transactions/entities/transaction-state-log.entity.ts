@@ -54,7 +54,11 @@ export class TransactionStateLog {
   @Column({ name: 'triggered_by', type: 'varchar', length: 100 })
   triggeredBy!: string;
 
-  @Column({ name: 'trace_id', type: 'uuid' })
+  @Column({
+    name: 'trace_id',
+    type: 'uuid',
+    default: () => 'gen_random_uuid()', // DB-level fallback
+  })
   traceId!: string;
 
   @Column({

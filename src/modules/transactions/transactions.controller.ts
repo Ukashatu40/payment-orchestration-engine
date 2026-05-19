@@ -8,9 +8,11 @@ import {
   Param,
   Query,
   Headers,
+  Req,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
+  Version,
 } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { InitiatePaymentRequestDto } from './dto/initiate-payment.dto';
@@ -30,12 +32,17 @@ export class TransactionsController {
     @Body() body: InitiatePaymentRequestDto,
     @Headers('x-merchant-id') merchantId: string,
     @Headers('idempotency-key') idempotencyKey: string,
-    @Headers('x-trace-id') traceId: string,
+    @Req() req: any,
     @Headers('x-mock-response') mockResponse?: string,
     @Headers('x-mock-delay-ms') mockDelayMs?: string,
     @Headers('x-mock-gateway-down') mockGatewayDown?: string,
   ): Promise<PaymentResponseDto> {
+    // Read traceId from request object set by TraceIdInterceptor
+    // Falls back to header if interceptor hasn't run (shouldn't happen)
+    const traceId = req.traceId ?? req.headers?.['x-trace-id'] ?? 'unknown';
+
     console.log('merchantId from header:', merchantId);
+
     const transaction = await this.transactionsService.initiatePayment({
       merchantId,
       merchantOrderId: body.merchantOrderId,
@@ -46,7 +53,6 @@ export class TransactionsController {
       traceId,
       metadata: {
         ...body.metadata,
-        // Pass mock control headers through to gateway adapters (Section B4.3)
         ...(mockResponse && { 'x-mock-response': mockResponse }),
         ...(mockDelayMs && { 'x-mock-delay-ms': parseInt(mockDelayMs) }),
         ...(mockGatewayDown && {
@@ -87,15 +93,15 @@ export class TransactionsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CapturePaymentRequestDto,
     @Headers('x-merchant-id') merchantId: string,
-    @Headers('x-trace-id') traceId: string,
+    @Req() req: any,
   ): Promise<PaymentResponseDto> {
+    const traceId = req.traceId ?? 'unknown';
     const transaction = await this.transactionsService.capturePayment({
       transactionId: id,
       amountPaise: body.amountPaise,
       traceId,
       triggeredBy: `merchant:${merchantId}`,
     });
-
     return PaymentResponseDto.fromEntity(transaction);
   }
 
@@ -105,14 +111,14 @@ export class TransactionsController {
   async voidPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Headers('x-merchant-id') merchantId: string,
-    @Headers('x-trace-id') traceId: string,
+    @Req() req: any,
   ): Promise<PaymentResponseDto> {
+    const traceId = req.traceId ?? 'unknown';
     const transaction = await this.transactionsService.voidPayment({
       transactionId: id,
       traceId,
       triggeredBy: `merchant:${merchantId}`,
     });
-
     return PaymentResponseDto.fromEntity(transaction);
   }
 
@@ -123,8 +129,9 @@ export class TransactionsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RefundPaymentRequestDto,
     @Headers('x-merchant-id') merchantId: string,
-    @Headers('x-trace-id') traceId: string,
+    @Req() req: any,
   ): Promise<PaymentResponseDto> {
+    const traceId = req.traceId ?? 'unknown';
     const transaction = await this.transactionsService.refundPayment({
       transactionId: id,
       amountPaise: body.amountPaise,
@@ -133,7 +140,6 @@ export class TransactionsController {
       traceId,
       triggeredBy: `merchant:${merchantId}`,
     });
-
     return PaymentResponseDto.fromEntity(transaction);
   }
 
