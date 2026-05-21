@@ -13,6 +13,7 @@ export interface GatewayScore {
   successRate: number;
   p95LatencyMs: number;
   selectionReason: string;
+  wasSelected?: boolean;
 }
 
 export interface RoutingResult {

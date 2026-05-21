@@ -68,7 +68,6 @@ describe('FS-07: Cascade Gateway Failure', () => {
   });
 
   it('should return 503 when all gateways for a method are OPEN', async () => {
-    // Trip all card gateways
     [
       PaymentGateway.RAZORPAY,
       PaymentGateway.STRIPE,
@@ -77,6 +76,17 @@ describe('FS-07: Cascade Gateway Failure', () => {
       for (let i = 0; i < 5; i++) {
         circuitBreaker.recordFailure(gw, PaymentMethod.CARD_CREDIT);
       }
+    });
+
+    // Verify all three are OPEN before making the request
+    [
+      PaymentGateway.RAZORPAY,
+      PaymentGateway.STRIPE,
+      PaymentGateway.PAYU,
+    ].forEach((gw) => {
+      const state = circuitBreaker.getState(gw, PaymentMethod.CARD_CREDIT);
+      console.log(`${gw} state:`, state);
+      expect(state).toBe(CircuitBreakerState.OPEN);
     });
 
     const response = await app.inject({

@@ -80,6 +80,12 @@ export class GatewayRouterService {
       const gateway = gwConfig.gateway;
       const m = metricsMap.get(gateway);
 
+      const cbState = this.circuitBreaker.getState(gateway, paymentMethod);
+      if (cbState === CircuitBreakerState.OPEN) {
+        this.logger.debug(`Excluding ${gateway} — circuit breaker OPEN`);
+        continue;
+      }
+
       // Success rate score — higher is better
       const successRate = m ? m.successRate : 0.95; // default for new gateways with no history
       const scoreSuccess = successRate;
