@@ -56,15 +56,9 @@ export class TransactionStateMachineService {
 
       const fromState = transaction.state;
 
-      // Step 2: Validate the transition is permitted.
-      // Throws InvalidStateTransitionException if not.
-      // Satisfies FS-15 (corruption attempt rejection).
-      this.assertValidTransition(transactionId, fromState, toState);
-
-      // Step 3: Handle duplicate transition gracefully.
-      // This covers FS-06 — webhook arrives before API response,
-      // both attempt to set state to CAPTURED. Second attempt is
-      // silently ignored, no error, no double processing.
+      // Step 2: Handle duplicate transition FIRST — before validation
+      // This covers FS-06: webhook arrives, sets CAPTURED, then API response
+      // also tries to set CAPTURED. Second attempt returns silently.
       if (fromState === toState) {
         this.logger.warn('Duplicate transition attempt ignored', {
           transactionId,
@@ -74,6 +68,9 @@ export class TransactionStateMachineService {
         });
         return transaction;
       }
+
+      // Step 3: Validate the transition is permitted (after duplicate check)
+      this.assertValidTransition(transactionId, fromState, toState);
 
       // Step 4: Update transaction state and bump version.
       await txnManager

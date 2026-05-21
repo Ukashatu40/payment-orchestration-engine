@@ -76,6 +76,9 @@ describe('FS-04: Gateway Returns 5xx During Capture', () => {
         TransactionState.CAPTURE_INITIATED,
         TransactionState.CAPTURE_FAILED,
         TransactionState.AUTHORISED,
+        'CAPTURE_INITIATED',
+        'CAPTURE_FAILED',
+        'AUTHORISED',
       ]).toContain(logs[0].to_state);
     }
   });

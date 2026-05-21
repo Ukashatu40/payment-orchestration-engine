@@ -215,7 +215,7 @@ export class WebhookProcessorService {
           event: 'WEBHOOK_STRIPE_AUTHORISED',
         },
         'payment_intent.succeeded': {
-          toState: TransactionState.CAPTURED,
+          toState: TransactionState.AUTHORISED,
           event: 'WEBHOOK_STRIPE_CAPTURED',
         },
         'payment_intent.payment_failed': {
