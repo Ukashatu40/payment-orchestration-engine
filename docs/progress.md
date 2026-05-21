@@ -16,5 +16,5 @@
 - Level 16 ✅ Controllers & API layer
 - Level 17 ✅ Guards, interceptors, filters (cross-cutting)
 - Level 18 ✅ Module wiring (AppModule + feature modules)
-- Level 19 → Docker + config
+- Level 19 ✅ Docker + config
 - Level 20 → Tests (unit → integration → scenarios)
