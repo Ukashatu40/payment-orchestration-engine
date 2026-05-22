@@ -243,10 +243,17 @@ paths:
             type: string
       requestBody:
         required: true
+        description: Optional amount to capture (for partial captures)
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CapturePaymentRequestDto'
+              type: object
+              properties:
+                amountPaise:
+                  type: integer
+                  minimum: 1
+              example:
+                amountPaise: 5000
       responses:
         '200':
           description: Payment captured
@@ -291,10 +298,27 @@ paths:
             type: string
       requestBody:
         required: true
+        description: Refund amount and reason
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RefundPaymentRequestDto'
+              type: object
+              properties:
+                amountPaise:
+                  type: integer
+                  minimum: 1
+                reason:
+                  type: string
+                idempotencyKey:
+                  type: string
+                  format: uuid
+              required:
+                - amountPaise
+                - idempotencyKey
+              example:
+                amountPaise: 5000
+                reason: Customer requested refund
+                idempotencyKey: 123e4567-e89b-12d3-a456-426614174000
       responses:
         '200':
           description: Payment refunded
@@ -332,23 +356,45 @@ paths:
           description: Refunds retrieved
         '404':
           description: Payment not found
-      summary: Retrieve payment refunds
+      summary: List refunds for a payment
       tags: *ref_2
   /payments/analytics/success-rate:
     get:
       operationId: TransactionsController_getSuccessRate
-      parameters: []
+      parameters:
+        - name: to
+          required: false
+          in: query
+          description: End date for analytics (ISO 8601 format)
+          schema: {}
+        - name: from
+          required: false
+          in: query
+          description: Start date for analytics (ISO 8601 format)
+          schema: {}
       responses:
         '200':
-          description: ''
+          description: Success rate analytics retrieved
+      summary: Get payment success rate analytics
       tags: *ref_2
   /payments/analytics/volume:
     get:
       operationId: TransactionsController_getVolume
-      parameters: []
+      parameters:
+        - name: to
+          required: false
+          in: query
+          description: End date for analytics (ISO 8601 format)
+          schema: {}
+        - name: from
+          required: false
+          in: query
+          description: Start date for analytics (ISO 8601 format)
+          schema: {}
       responses:
         '200':
-          description: ''
+          description: Volume analytics retrieved
+      summary: Get payment volume analytics
       tags: *ref_2
   /webhooks/razorpay:
     post:
@@ -489,11 +535,5 @@ components:
       name: X-API-Key
   schemas:
     InitiatePaymentRequestDto:
-      type: object
-      properties: {}
-    CapturePaymentRequestDto:
-      type: object
-      properties: {}
-    RefundPaymentRequestDto:
       type: object
       properties: {}

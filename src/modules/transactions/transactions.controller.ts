@@ -30,6 +30,7 @@ import { CapturePaymentRequestDto } from './dto/capture-payment.dto';
 import { RefundPaymentRequestDto } from './dto/refund-payment.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { PaymentResponseDto } from './dto/payment-response.dto';
+import { RefundResponseDto } from './dto/refund-response.dto';
 
 @Controller({ path: 'payments', version: '1' })
 export class TransactionsController {
@@ -222,12 +223,12 @@ export class TransactionsController {
 
   // GET /api/v1/payments/:id/refunds
   @Get(':id/refunds')
-  @ApiOperation({ summary: 'Retrieve payment refunds' })
+  @ApiOperation({ summary: 'List refunds for a payment' })
   @ApiResponse({ status: 200, description: 'Refunds retrieved' })
   @ApiResponse({ status: 404, description: 'Payment not found' })
-  async getRefunds(@Param('id', ParseUUIDPipe) id: string) {
-    // Placeholder — returns empty array until refund repo is queried
-    return [];
+  async getRefunds(@Param('id', ParseUUIDPipe) id: string): Promise<RefundResponseDto[]> {
+    const refunds = await this.transactionsService.getRefunds(id);
+    return refunds.map(RefundResponseDto.fromEntity);
   }
 
   // GET /api/v1/analytics/success-rate

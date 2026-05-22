@@ -8,6 +8,7 @@ import { TransactionStateLogRepository } from './repositories/transaction-state-
 import { TransactionStateMachineService } from './state-machine/transaction-state-machine.service';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
 import { GatewaysModule } from '../gateways/gateways.module';
+import { RefundRepository } from './repositories/refund.repository';
 
 @Module({
   imports: [IdempotencyModule, GatewaysModule],
@@ -16,6 +17,7 @@ import { GatewaysModule } from '../gateways/gateways.module';
     TransactionStateMachineService,
     TransactionRepository,
     TransactionStateLogRepository,
+    RefundRepository, // ← added refund repository provider
   ],
   controllers: [TransactionsController],
   exports: [
@@ -23,6 +25,7 @@ import { GatewaysModule } from '../gateways/gateways.module';
     TransactionStateMachineService,
     TransactionRepository,
     TransactionStateLogRepository,
+    RefundRepository, // ← export refund repository for use in reconciliation module
   ],
 })
 export class TransactionsModule {}

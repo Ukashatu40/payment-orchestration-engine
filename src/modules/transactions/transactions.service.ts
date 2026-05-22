@@ -13,7 +13,7 @@ import { CircuitBreakerService } from '../gateways/circuit-breaker/circuit-break
 import { GatewayHealthService } from '../gateways/health/gateway-health.service';
 import { Transaction } from './entities/transaction.entity';
 import { TransactionStateLog } from './entities/transaction-state-log.entity';
-import { TransactionState } from '../../common/enums';
+import { RefundState, TransactionState } from '../../common/enums';
 import { GatewayTimeoutException, GatewayUnavailableException } from '../../common/exceptions';
 import {
   InitiatePaymentDto,
@@ -21,6 +21,8 @@ import {
   RefundPaymentDto,
   VoidPaymentDto,
 } from './interfaces/initiate-payment.interface';
+import { Refund } from './entities/refund.entity';
+import { RefundRepository } from './repositories/refund.repository';
 
 @Injectable()
 export class TransactionsService {
@@ -30,6 +32,7 @@ export class TransactionsService {
     private readonly dataSource: DataSource,
     private readonly transactionRepo: TransactionRepository,
     private readonly stateLogRepo: TransactionStateLogRepository,
+    private readonly refundRepo: RefundRepository, // ← added refund repository
     private readonly stateMachine: TransactionStateMachineService,
     private readonly idempotencyService: IdempotencyService,
     private readonly gatewayRouter: GatewayRouterService,
@@ -403,6 +406,19 @@ export class TransactionsService {
         { refundedPaise: transaction.refundedPaise + BigInt(dto.amountPaise) },
       );
 
+    // Persist refund record
+    await this.refundRepo.create({
+      transactionId: transaction.id,
+      amountPaise: BigInt(dto.amountPaise),
+      currency: transaction.currency,
+      state: RefundState.COMPLETED,
+      gateway: transaction.gateway!,
+      gatewayRefundId: refundResponse.gatewayRefundId,
+      reason: dto.reason,
+      initiatedBy: dto.triggeredBy,
+      idempotencyKey: dto.idempotencyKey,
+    });
+
     return refunded;
   }
 
@@ -443,6 +459,11 @@ export class TransactionsService {
       triggeredBy: dto.triggeredBy,
       traceId: dto.traceId,
     });
+  }
+
+  async getRefunds(transactionId: string): Promise<Refund[]> {
+    await this.findOrThrow(transactionId);
+    return this.refundRepo.findByTransactionId(transactionId);
   }
 
   // ----------------------------------------------------------------
