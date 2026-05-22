@@ -1,98 +1,244 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# PayFlow Orchestration Layer
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Production-grade payment orchestration backend routing transactions across Razorpay, Stripe, PayU, and UPI with intelligent multi-criteria routing, sub-2-second gateway failover, absolute idempotency, and immutable audit trails.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Quick Start
 
 ```bash
-$ npm install
+git clone <repository-url>
+cd payflow-orchestration-layer
+
+cp .env.example .env.local
+
+docker-compose up -d
 ```
 
-## Compile and run the project
+Health check:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+curl -H "X-API-Key: dev-api-key-001" \
+http://localhost:3000/api/v1/health
 ```
 
-## Run tests
+Expected response:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+---
+
+## Architecture
+
+```text
+Merchant App
+    ↓
+API Layer (NestJS + Fastify)
+    ↓
+Idempotency Service (pg_advisory_xact_lock)
+    ↓
+Transaction State Machine (SELECT FOR UPDATE)
+    ↓
+Gateway Router (Multi-Criteria Scoring)
+    ↓
+Circuit Breaker → Gateway Adapters
+(Razorpay, Stripe, PayU, UPI)
+    ↓
+Webhook Pipeline → Reconciliation Engine
+    ↓
+PostgreSQL 15
+(11 Tables + Immutable Audit Trail)
+```
+
+Or rendered with Mermaid:
+
+```mermaid
+flowchart TD
+
+    A[Merchant App]
+    B[API Layer<br/>NestJS + Fastify]
+    C[Idempotency Service<br/>pg_advisory_xact_lock]
+    D[Transaction State Machine<br/>SELECT FOR UPDATE]
+    E[Gateway Router<br/>Multi-Criteria Scoring]
+    F[Circuit Breaker]
+    G[Gateway Adapters<br/>Razorpay, Stripe, PayU, UPI]
+    H[Webhook Pipeline]
+    I[Reconciliation Engine]
+    J[(PostgreSQL 15<br/>Immutable Audit Trail)]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+    I --> J
+```
+
+---
+
+## Technology Stack
+
+| Component | Choice                   | Reason                                                  |
+| --------- | ------------------------ | ------------------------------------------------------- |
+| Framework | NestJS 10 + Fastify      | Dependency injection, high throughput, raw body support |
+| Database  | PostgreSQL 15            | Advisory locks, JSONB, row-level locking                |
+| ORM       | TypeORM                  | Migration tooling, QueryBuilder locking support         |
+| Language  | TypeScript (Strict Mode) | Compile-time safety for financial operations            |
+
+---
+
+## Key Design Decisions
+
+- **BIGINT paise storage**  
+  All monetary values are stored as integer paise. Never FLOAT.
+
+- **Pessimistic locking**  
+  `SELECT FOR UPDATE` protects state transitions. Locks are released before external gateway calls.
+
+- **Advisory locks**  
+  `pg_advisory_xact_lock` guarantees microsecond-level idempotency.
+
+- **Immutable audit trail**  
+  `transaction_state_log` is append-only with database-level enforcement.
+
+- **Raw body webhook verification**  
+  Signatures are validated against the raw request buffer, not re-serialized JSON.
+
+---
+
+## API Reference
+
+Base URL:
+
+```text
+http://localhost:3000/api/v1
+```
+
+Authentication:
+
+```text
+X-API-Key header required on all endpoints except webhooks
+```
+
+| Method | Endpoint                         | Description                 |
+| ------ | -------------------------------- | --------------------------- |
+| POST   | `/payments`                      | Initiate payment            |
+| GET    | `/payments/:id`                  | Get payment by ID           |
+| GET    | `/payments?merchant_order_id=`   | Get payment by order ID     |
+| POST   | `/payments/:id/capture`          | Capture authorized payment  |
+| POST   | `/payments/:id/void`             | Void authorized payment     |
+| POST   | `/payments/:id/refund`           | Initiate refund             |
+| GET    | `/payments/:id/refunds`          | List refunds                |
+| GET    | `/payments/:id/timeline`         | State transition history    |
+| POST   | `/webhooks/razorpay`             | Razorpay webhook receiver   |
+| POST   | `/webhooks/stripe`               | Stripe webhook receiver     |
+| POST   | `/webhooks/payu`                 | PayU webhook receiver       |
+| POST   | `/webhooks/upi`                  | UPI callback receiver       |
+| GET    | `/gateways`                      | List gateways with health   |
+| GET    | `/gateways/:name/health`         | Circuit breaker state       |
+| GET    | `/gateways/:name/metrics`        | Gateway performance metrics |
+| PUT    | `/gateways/:name/config`         | Update gateway config       |
+| GET    | `/routing/config`                | Current routing weights     |
+| PUT    | `/routing/config`                | Update routing weights      |
+| POST   | `/reconciliation/trigger`        | Trigger reconciliation run  |
+| GET    | `/reconciliation/reports/:runId` | Reconciliation report       |
+| GET    | `/reconciliation/anomalies`      | Unresolved anomalies        |
+| GET    | `/analytics/success-rate`        | Success rate by gateway     |
+| GET    | `/analytics/volume`              | Transaction volume by day   |
+| GET    | `/health`                        | System health check         |
+
+---
+
+## Failure Scenario Coverage
+
+| Scenario                         | Mechanism                                     |
+| -------------------------------- | --------------------------------------------- |
+| FS-01 Gateway timeout            | Circuit breaker + failover under 2 seconds    |
+| FS-02 Duplicate webhook          | `processed_webhook_events` deduplication      |
+| FS-03 Double submit              | Advisory lock + idempotency key               |
+| FS-04 5xx on capture             | Exponential backoff + `CAPTURE_FAILED` state  |
+| FS-05 Partial capture            | `PARTIALLY_CAPTURED` state tracking           |
+| FS-06 Webhook before response    | State machine duplicate transition rejection  |
+| FS-07 Cascade failure            | OPEN gateways excluded from router scoring    |
+| FS-08 Refund settled transaction | Valid `SETTLED → REFUND_INITIATED` transition |
+| FS-09 Concurrent race            | Transaction-level advisory locking            |
+| FS-10 Replay attack              | HMAC verification + event deduplication       |
+| FS-11 Missing settlement         | Reconciliation anomaly detection              |
+| FS-12 UPI timeout                | `AUTH_EXPIRED` terminal state                 |
+| FS-13 Key collision              | Composite `(merchant_id, key)` scoping        |
+| FS-14 Connection exhaustion      | Short-lived locks + connection pooling        |
+| FS-15 State corruption           | Invalid transition exception before DB write  |
+
+---
+
+## Running Tests
 
 ```bash
-# unit tests
-$ npm run test
+# Unit tests
+npm run test:unit
 
-# e2e tests
-$ npm run test:e2e
+# Failure scenario tests
+npm run test:scenarios
 
-# test coverage
-$ npm run test:cov
+# Full test suite with coverage
+npm run test:all
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Deliberate Errors Found
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+See:
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+```text
+docs/errors-found.md
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+The document contains the 5 technical specification errors identified during implementation.
 
-## Resources
+---
 
-Check out a few resources that may come in handy when working with NestJS:
+## Project Structure
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```text
+src/
+├── common/
+│   ├── enums
+│   ├── exceptions
+│   ├── guards
+│   └── interceptors
+│
+├── database/
+│   └── migrations
+│
+└── modules/
+    ├── transactions/
+    │   ├── state-machine
+    │   ├── services
+    │   └── repositories
+    │
+    ├── gateways/
+    │   ├── adapters
+    │   ├── router
+    │   ├── circuit-breaker
+    │   └── health
+    │
+    ├── idempotency/
+    │   └── advisory-locks
+    │
+    ├── webhooks/
+    │   ├── signature
+    │   ├── queue
+    │   └── processor
+    │
+    └── reconciliation/
+        ├── batch-engine
+        └── scheduler
+```
