@@ -61,9 +61,7 @@ export class UpiAdapter extends BaseMockAdapter implements IGatewayAdapter {
         status: 'SUCCESS',
         responseCode: '00',
         // UPI mandate expiry for FS-12 simulation
-        mandateExpiresAt: new Date(
-          Date.now() + this.MANDATE_WINDOW_MS,
-        ).toISOString(),
+        mandateExpiresAt: new Date(Date.now() + this.MANDATE_WINDOW_MS).toISOString(),
       },
     };
   }

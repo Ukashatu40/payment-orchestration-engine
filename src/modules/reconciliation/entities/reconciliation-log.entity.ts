@@ -1,12 +1,6 @@
 // src/modules/reconciliation/entities/reconciliation-log.entity.ts
 
-import {
-  Entity,
-  Column,
-  PrimaryGeneratedColumn,
-  CreateDateColumn,
-  Index,
-} from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
 import { PaymentGateway } from '../../../common/enums';
 
 export enum DiscrepancyType {

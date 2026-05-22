@@ -1,11 +1,7 @@
 // test/scenarios/fs-15-state-machine-corruption.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { TransactionStateMachineService } from '../../src/modules/transactions/state-machine/transaction-state-machine.service';
 import { TransactionRepository } from '../../src/modules/transactions/repositories/transaction.repository';

@@ -1,6 +1,14 @@
 // src/modules/transactions/transactions.controller.ts
 
 import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiHeader,
+  ApiBearerAuth,
+  ApiSecurity,
+} from '@nestjs/swagger';
+import {
   Controller,
   Post,
   Get,
@@ -28,6 +36,25 @@ export class TransactionsController {
   // POST /api/v1/payments
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Initiate a new payment' })
+  @ApiHeader({
+    name: 'x-merchant-id',
+    required: true,
+    description: 'Merchant UUID',
+  })
+  @ApiHeader({
+    name: 'idempotency-key',
+    required: true,
+    description: 'UUID v4 idempotency key',
+  })
+  @ApiResponse({ status: 201, description: 'Payment initiated successfully' })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
+  @ApiResponse({
+    status: 409,
+    description: 'Idempotency conflict — request in progress',
+  })
+  @ApiResponse({ status: 503, description: 'No gateway available' })
   async initiatePayment(
     @Body() body: InitiatePaymentRequestDto,
     @Headers('x-merchant-id') merchantId: string,
@@ -66,9 +93,10 @@ export class TransactionsController {
 
   // GET /api/v1/payments/:id
   @Get(':id')
-  async getPayment(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<PaymentResponseDto> {
+  @ApiOperation({ summary: 'Retrieve payment details by ID' })
+  @ApiResponse({ status: 200, description: 'Payment found' })
+  @ApiResponse({ status: 404, description: 'Payment not found' })
+  async getPayment(@Param('id', ParseUUIDPipe) id: string): Promise<PaymentResponseDto> {
     const transaction = await this.transactionsService.findById(id);
     return PaymentResponseDto.fromEntity(transaction);
   }
@@ -89,6 +117,9 @@ export class TransactionsController {
   // POST /api/v1/payments/:id/capture
   @Post(':id/capture')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Capture an authorised payment' })
+  @ApiResponse({ status: 200, description: 'Payment captured' })
+  @ApiResponse({ status: 422, description: 'Invalid state transition' })
   async capturePayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CapturePaymentRequestDto,
@@ -108,6 +139,9 @@ export class TransactionsController {
   // POST /api/v1/payments/:id/void
   @Post(':id/void')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Void an authorised payment' })
+  @ApiResponse({ status: 200, description: 'Payment voided' })
+  @ApiResponse({ status: 422, description: 'Invalid state transition' })
   async voidPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Headers('x-merchant-id') merchantId: string,
@@ -125,6 +159,9 @@ export class TransactionsController {
   // POST /api/v1/payments/:id/refund
   @Post(':id/refund')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refund a completed payment' })
+  @ApiResponse({ status: 200, description: 'Payment refunded' })
+  @ApiResponse({ status: 422, description: 'Invalid state transition' })
   async refundPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RefundPaymentRequestDto,
@@ -145,12 +182,18 @@ export class TransactionsController {
 
   // GET /api/v1/payments/:id/timeline
   @Get(':id/timeline')
+  @ApiOperation({ summary: 'Retrieve payment timeline' })
+  @ApiResponse({ status: 200, description: 'Timeline retrieved' })
+  @ApiResponse({ status: 404, description: 'Payment not found' })
   async getTimeline(@Param('id', ParseUUIDPipe) id: string) {
     return this.transactionsService.getTimeline(id);
   }
 
   // GET /api/v1/payments/:id/refunds
   @Get(':id/refunds')
+  @ApiOperation({ summary: 'Retrieve payment refunds' })
+  @ApiResponse({ status: 200, description: 'Refunds retrieved' })
+  @ApiResponse({ status: 404, description: 'Payment not found' })
   async getRefunds(@Param('id', ParseUUIDPipe) id: string) {
     // Placeholder — returns empty array until refund repo is queried
     return [];
@@ -159,9 +202,7 @@ export class TransactionsController {
   // GET /api/v1/analytics/success-rate
   @Get('analytics/success-rate')
   async getSuccessRate(@Query() query: AnalyticsQueryDto) {
-    const from = query.from
-      ? new Date(query.from)
-      : new Date(Date.now() - 86_400_000);
+    const from = query.from ? new Date(query.from) : new Date(Date.now() - 86_400_000);
     const to = query.to ? new Date(query.to) : new Date();
     return this.transactionsService.getSuccessRateAnalytics(from, to);
   }
@@ -169,9 +210,7 @@ export class TransactionsController {
   // GET /api/v1/analytics/volume
   @Get('analytics/volume')
   async getVolume(@Query() query: AnalyticsQueryDto) {
-    const from = query.from
-      ? new Date(query.from)
-      : new Date(Date.now() - 86_400_000);
+    const from = query.from ? new Date(query.from) : new Date(Date.now() - 86_400_000);
     const to = query.to ? new Date(query.to) : new Date();
     return this.transactionsService.getVolumeAnalytics(from, to);
   }

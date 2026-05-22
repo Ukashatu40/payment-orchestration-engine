@@ -1,11 +1,7 @@
 // test/scenarios/fs-08-refund-settled-transaction.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { makeHeaders } from '../integration/helpers/request.helper';
 import { TransactionRepository } from '../../src/modules/transactions/repositories/transaction.repository';
@@ -59,10 +55,9 @@ describe('FS-08: Refund on Already-Settled Transaction', () => {
 
     // State must transition through REFUND_INITIATED to REFUNDED
     const updated = await transactionRepo.findById(transaction.id);
-    expect([
-      TransactionState.REFUND_INITIATED,
-      TransactionState.REFUNDED,
-    ]).toContain(updated!.state);
+    expect([TransactionState.REFUND_INITIATED, TransactionState.REFUNDED]).toContain(
+      updated!.state,
+    );
 
     // Verify state log shows SETTLED → REFUND_INITIATED transition
     const ds = getDataSource();

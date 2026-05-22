@@ -11,11 +11,7 @@ import { IdempotencyModule } from '../idempotency/idempotency.module';
 
 @Module({
   imports: [TransactionsModule, GatewaysModule, IdempotencyModule],
-  providers: [
-    ReconciliationService,
-    ReconciliationScheduler,
-    ReconciliationLogRepository,
-  ],
+  providers: [ReconciliationService, ReconciliationScheduler, ReconciliationLogRepository],
   controllers: [ReconciliationController],
   exports: [ReconciliationService],
 })

@@ -155,8 +155,7 @@ describe('ReconciliationService', () => {
       expect(mockStateMachine.transition).not.toHaveBeenCalled();
 
       // Log entry must have correct discrepancy type
-      const savedEntries =
-        mockReconciliationLogRepo.createMany.mock.calls[0][0];
+      const savedEntries = mockReconciliationLogRepo.createMany.mock.calls[0][0];
       expect(savedEntries[0].discrepancyType).toBe(
         DiscrepancyType.INTERNAL_CAPTURED_GATEWAY_FAILED,
       );

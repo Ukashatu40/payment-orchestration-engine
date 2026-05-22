@@ -46,16 +46,9 @@ export class WebhookSignatureService {
     headers: Record<string, string | string[] | undefined>,
     secret: string,
   ): void {
-    const signature = this.extractHeader(
-      headers,
-      'x-razorpay-signature',
-      PaymentGateway.RAZORPAY,
-    );
+    const signature = this.extractHeader(headers, 'x-razorpay-signature', PaymentGateway.RAZORPAY);
 
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(rawBody)
-      .digest('hex');
+    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 
     this.timingSafeCompare(signature, expected, PaymentGateway.RAZORPAY);
   }
@@ -70,20 +63,14 @@ export class WebhookSignatureService {
     headers: Record<string, string | string[] | undefined>,
     secret: string,
   ): void {
-    const sigHeader = this.extractHeader(
-      headers,
-      'stripe-signature',
-      PaymentGateway.STRIPE,
-    );
+    const sigHeader = this.extractHeader(headers, 'stripe-signature', PaymentGateway.STRIPE);
 
     // Parse t=timestamp,v1=signature
-    const parts = sigHeader
-      .split(',')
-      .reduce<Record<string, string>>((acc, part) => {
-        const [k, v] = part.split('=');
-        if (k && v) acc[k] = v;
-        return acc;
-      }, {});
+    const parts = sigHeader.split(',').reduce<Record<string, string>>((acc, part) => {
+      const [k, v] = part.split('=');
+      if (k && v) acc[k] = v;
+      return acc;
+    }, {});
 
     const timestamp = parts['t'];
     const v1Sig = parts['v1'];
@@ -97,8 +84,7 @@ export class WebhookSignatureService {
 
     // Replay attack prevention — reject webhooks older than 5 minutes
     // Satisfies FS-10
-    const webhookAgeSeconds =
-      Math.floor(Date.now() / 1000) - parseInt(timestamp, 10);
+    const webhookAgeSeconds = Math.floor(Date.now() / 1000) - parseInt(timestamp, 10);
 
     if (webhookAgeSeconds > 300) {
       this.logger.warn('Stripe webhook rejected — timestamp too old', {
@@ -110,10 +96,7 @@ export class WebhookSignatureService {
     // Stripe signs: timestamp + '.' + rawBody
     const signedPayload = `${timestamp}.${rawBody.toString('utf8')}`;
 
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(signedPayload)
-      .digest('hex');
+    const expected = crypto.createHmac('sha256', secret).update(signedPayload).digest('hex');
 
     this.timingSafeCompare(v1Sig, expected, PaymentGateway.STRIPE);
   }
@@ -129,17 +112,10 @@ export class WebhookSignatureService {
     headers: Record<string, string | string[] | undefined>,
     secret: string,
   ): void {
-    const signature = this.extractHeader(
-      headers,
-      'x-payu-signature',
-      PaymentGateway.PAYU,
-    );
+    const signature = this.extractHeader(headers, 'x-payu-signature', PaymentGateway.PAYU);
 
     // SHA-256 — not SHA-512 (Deliberate Error 1 fix)
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(rawBody)
-      .digest('hex');
+    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 
     this.timingSafeCompare(signature, expected, PaymentGateway.PAYU);
   }
@@ -154,16 +130,9 @@ export class WebhookSignatureService {
     headers: Record<string, string | string[] | undefined>,
     secret: string,
   ): void {
-    const signature = this.extractHeader(
-      headers,
-      'x-upi-signature',
-      PaymentGateway.UPI,
-    );
+    const signature = this.extractHeader(headers, 'x-upi-signature', PaymentGateway.UPI);
 
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(rawBody)
-      .digest('hex');
+    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
 
     this.timingSafeCompare(signature, expected, PaymentGateway.UPI);
   }
@@ -172,11 +141,7 @@ export class WebhookSignatureService {
   // Timing-safe comparison — prevents timing attacks (Section A5.3)
   // Using === is vulnerable to byte-by-byte timing leaks.
   // ----------------------------------------------------------------
-  private timingSafeCompare(
-    received: string,
-    expected: string,
-    gateway: PaymentGateway,
-  ): void {
+  private timingSafeCompare(received: string, expected: string, gateway: PaymentGateway): void {
     try {
       const receivedBuf = Buffer.from(received, 'hex');
       const expectedBuf = Buffer.from(expected, 'hex');

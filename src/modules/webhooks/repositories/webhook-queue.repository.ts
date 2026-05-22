@@ -48,11 +48,7 @@ export class WebhookQueueRepository {
   }
 
   // Exponential backoff: 1s → 2s → 4s (Section A8.3)
-  async markFailedWithRetry(
-    id: string,
-    errorMessage: string,
-    retryCount: number,
-  ): Promise<void> {
+  async markFailedWithRetry(id: string, errorMessage: string, retryCount: number): Promise<void> {
     const maxRetries = 3;
 
     if (retryCount >= maxRetries) {

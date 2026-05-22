@@ -8,10 +8,7 @@ import { GatewayHealthService } from '../health/gateway-health.service';
 import { GatewayConfigRepository } from '../repositories/gateway-config.repository';
 import { GatewayRoute } from '../entities/gateway-route.entity';
 import { RoutingConfig } from '../entities/routing-config.entity';
-import {
-  GatewayScore,
-  RoutingResult,
-} from './interfaces/routing-result.interface';
+import { GatewayScore, RoutingResult } from './interfaces/routing-result.interface';
 import { CircuitBreakerState } from '../circuit-breaker/circuit-breaker-state.enum';
 import { PaymentGateway, PaymentMethod } from '../../../common/enums';
 import { NoGatewayAvailableException } from '../../../common/exceptions';
@@ -42,15 +39,12 @@ export class GatewayRouterService {
     const config = await this.loadRoutingConfig();
 
     // Step 2: Get sliding window metrics for all gateways
-    const metrics = await this.healthService.getSlidingWindowMetrics(
-      config.slidingWindowMinutes,
-    );
+    const metrics = await this.healthService.getSlidingWindowMetrics(config.slidingWindowMinutes);
 
     const metricsMap = new Map(metrics.map((m) => [m.gateway, m]));
 
     // Step 3: Load cost config for all gateways
-    const enabledConfigs =
-      await this.gatewayConfigRepo.findEnabledForMethod(paymentMethod);
+    const enabledConfigs = await this.gatewayConfigRepo.findEnabledForMethod(paymentMethod);
 
     if (enabledConfigs.length === 0) {
       throw new NoGatewayAvailableException(paymentMethod);
@@ -99,21 +93,15 @@ export class GatewayRouterService {
 
       // Cost score — lower cost = higher score
       const gatewayCost =
-        Number(gwConfig.costPercentage) +
-        Number(gwConfig.costFixedPaise) / 100_000;
+        Number(gwConfig.costPercentage) + Number(gwConfig.costFixedPaise) / 100_000;
       const normalisedCost = (gatewayCost - minCost) / costRange;
       const scoreCost = 1 - normalisedCost;
 
       // Health score from circuit breaker (1.0 / 0.5 / 0.0)
-      const scoreHealth = this.circuitBreaker.getHealthScore(
-        gateway,
-        paymentMethod,
-      );
+      const scoreHealth = this.circuitBreaker.getHealthScore(gateway, paymentMethod);
 
       // Fit score — 1.0 if gateway supports this payment method
-      const scoreFit = gwConfig.supportedMethods.includes(paymentMethod)
-        ? 1.0
-        : 0.0;
+      const scoreFit = gwConfig.supportedMethods.includes(paymentMethod) ? 1.0 : 0.0;
 
       // Skip gateways that don't support this method at all
       if (scoreFit === 0.0) continue;
@@ -162,11 +150,9 @@ export class GatewayRouterService {
 
       if (scoreDiff <= config.degradedSkipThreshold) {
         selected = secondBest;
-        selected.selectionReason =
-          'Preferred over degraded top-scorer (within threshold)';
+        selected.selectionReason = 'Preferred over degraded top-scorer (within threshold)';
       } else {
-        selected.selectionReason =
-          'Selected despite HALF_OPEN (score gap exceeds threshold)';
+        selected.selectionReason = 'Selected despite HALF_OPEN (score gap exceeds threshold)';
       }
     } else {
       selected.selectionReason = 'Highest composite score';
@@ -234,7 +220,7 @@ export class GatewayRouterService {
         slidingWindowMinutes: 10,
         degradedSkipThreshold: 0.2,
         updatedAt: new Date(),
-      } as RoutingConfig;
+      };
     }
 
     return config;

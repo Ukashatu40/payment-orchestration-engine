@@ -48,9 +48,7 @@ export class WebhookProcessorService {
       // If this event ID was already processed, return immediately.
       // HTTP 200 was already sent to the gateway by the controller.
       // Satisfies FS-02 (duplicate webhook delivery).
-      const payloadHash = this.queueService.hashPayload(
-        Buffer.from(JSON.stringify(payload)),
-      );
+      const payloadHash = this.queueService.hashPayload(Buffer.from(JSON.stringify(payload)));
       const eventType = this.queueService.extractEventType(gateway, payload);
 
       const transactionId = this.extractTransactionId(gateway, payload);
@@ -119,21 +117,15 @@ export class WebhookProcessorService {
       // Step 5: Check if transition is valid from current state.
       // If not valid (e.g. webhook arrives after API response already
       // set the state), the state machine handles it gracefully (FS-06).
-      const canTransition = this.stateMachine.canTransition(
-        transaction.state,
-        transition.toState,
-      );
+      const canTransition = this.stateMachine.canTransition(transaction.state, transition.toState);
 
       if (!canTransition) {
-        this.logger.log(
-          'Webhook transition not applicable — state already advanced',
-          {
-            gateway,
-            eventId,
-            currentState: transaction.state,
-            attemptedTransition: transition.toState,
-          },
-        );
+        this.logger.log('Webhook transition not applicable — state already advanced', {
+          gateway,
+          eventId,
+          currentState: transaction.state,
+          attemptedTransition: transition.toState,
+        });
         await this.queueService.markCompleted(queueId);
         return;
       }
@@ -169,11 +161,7 @@ export class WebhookProcessorService {
       });
 
       // Exponential backoff retry — moves to DLQ after max retries
-      await this.queueService.markFailed(
-        queueId,
-        error.message,
-        retryCount + 1,
-      );
+      await this.queueService.markFailed(queueId, error.message, retryCount + 1);
     }
   }
 
@@ -318,16 +306,11 @@ export class WebhookProcessorService {
     }
   }
 
-  private extractAmount(
-    gateway: PaymentGateway,
-    payload: Record<string, unknown>,
-  ): bigint | null {
+  private extractAmount(gateway: PaymentGateway, payload: Record<string, unknown>): bigint | null {
     try {
       switch (gateway) {
         case PaymentGateway.RAZORPAY: {
-          const amount = (payload['payload'] as any)?.['payment']?.['entity']?.[
-            'amount'
-          ];
+          const amount = (payload['payload'] as any)?.['payment']?.['entity']?.['amount'];
           return amount !== undefined ? BigInt(amount) : null;
         }
         case PaymentGateway.STRIPE: {
@@ -336,9 +319,7 @@ export class WebhookProcessorService {
         }
         case PaymentGateway.PAYU: {
           const amount = payload['amount'];
-          return amount !== undefined
-            ? BigInt(Math.round(Number(amount) * 100))
-            : null;
+          return amount !== undefined ? BigInt(Math.round(Number(amount) * 100)) : null;
         }
         default:
           return null;

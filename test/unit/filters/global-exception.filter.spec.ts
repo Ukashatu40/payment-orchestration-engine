@@ -1,12 +1,7 @@
 // test/unit/filters/global-exception.filter.spec.ts
 
 import { GlobalExceptionFilter } from '../../../src/common/filters/global-exception.filter';
-import {
-  HttpException,
-  HttpStatus,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { HttpException, HttpStatus, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
   InvalidStateTransitionException,
   IdempotencyConflictException,
@@ -14,11 +9,7 @@ import {
   GatewayTimeoutException,
   NoGatewayAvailableException,
 } from '../../../src/common/exceptions';
-import {
-  TransactionState,
-  PaymentGateway,
-  PaymentMethod,
-} from '../../../src/common/enums';
+import { TransactionState, PaymentGateway, PaymentMethod } from '../../../src/common/enums';
 
 // ----------------------------------------------------------------
 // Mock ArgumentsHost
@@ -71,10 +62,7 @@ describe('GlobalExceptionFilter', () => {
       const { switchToHttp, mockReply } = buildHost();
       const host = { switchToHttp } as any;
 
-      filter.catch(
-        new BadRequestException('amountPaise must be positive'),
-        host,
-      );
+      filter.catch(new BadRequestException('amountPaise must be positive'), host);
 
       expect(mockReply.status).toHaveBeenCalledWith(400);
       const body = mockReply.send.mock.calls[0][0];
@@ -105,9 +93,7 @@ describe('GlobalExceptionFilter', () => {
       expect(body.error.code).toBe('INVALID_STATE_TRANSITION');
       expect(body.error.details.fromState).toBe(TransactionState.CREATED);
       expect(body.error.details.toState).toBe(TransactionState.REFUNDED);
-      expect(body.error.details.validTargets).toContain(
-        TransactionState.ROUTE_SELECTED,
-      );
+      expect(body.error.details.validTargets).toContain(TransactionState.ROUTE_SELECTED);
     });
   });
 
@@ -116,10 +102,7 @@ describe('GlobalExceptionFilter', () => {
       const { switchToHttp, mockReply } = buildHost();
       const host = { switchToHttp } as any;
 
-      filter.catch(
-        new IdempotencyConflictException('idem-key-001', 'merchant-001'),
-        host,
-      );
+      filter.catch(new IdempotencyConflictException('idem-key-001', 'merchant-001'), host);
 
       expect(mockReply.status).toHaveBeenCalledWith(409);
       const body = mockReply.send.mock.calls[0][0];
@@ -132,10 +115,7 @@ describe('GlobalExceptionFilter', () => {
       const { switchToHttp, mockReply } = buildHost();
       const host = { switchToHttp } as any;
 
-      filter.catch(
-        new WebhookSignatureInvalidException(PaymentGateway.RAZORPAY),
-        host,
-      );
+      filter.catch(new WebhookSignatureInvalidException(PaymentGateway.RAZORPAY), host);
 
       expect(mockReply.status).toHaveBeenCalledWith(401);
       const body = mockReply.send.mock.calls[0][0];
@@ -149,10 +129,7 @@ describe('GlobalExceptionFilter', () => {
       const { switchToHttp, mockReply } = buildHost();
       const host = { switchToHttp } as any;
 
-      filter.catch(
-        new GatewayTimeoutException(PaymentGateway.RAZORPAY, 30000, 'txn-001'),
-        host,
-      );
+      filter.catch(new GatewayTimeoutException(PaymentGateway.RAZORPAY, 30000, 'txn-001'), host);
 
       expect(mockReply.status).toHaveBeenCalledWith(504);
       const body = mockReply.send.mock.calls[0][0];
@@ -167,10 +144,7 @@ describe('GlobalExceptionFilter', () => {
       const { switchToHttp, mockReply } = buildHost();
       const host = { switchToHttp } as any;
 
-      filter.catch(
-        new NoGatewayAvailableException(PaymentMethod.CARD_CREDIT),
-        host,
-      );
+      filter.catch(new NoGatewayAvailableException(PaymentMethod.CARD_CREDIT), host);
 
       expect(mockReply.status).toHaveBeenCalledWith(503);
       const body = mockReply.send.mock.calls[0][0];

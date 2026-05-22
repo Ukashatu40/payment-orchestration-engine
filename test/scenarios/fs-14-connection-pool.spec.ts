@@ -1,11 +1,7 @@
 // test/scenarios/fs-14-connection-pool.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { makeHeaders } from '../integration/helpers/request.helper';
 import { v4 as uuidv4 } from 'uuid';
@@ -86,10 +82,7 @@ describe('FS-14: Hot-Path Database Connection Exhaustion', () => {
       headers: makeHeaders(),
     });
 
-    const [healthResponse] = await Promise.all([
-      healthCheck,
-      ...paymentRequests,
-    ]);
+    const [healthResponse] = await Promise.all([healthCheck, ...paymentRequests]);
 
     expect(healthResponse.statusCode).toBe(200);
     const body = JSON.parse(healthResponse.body);

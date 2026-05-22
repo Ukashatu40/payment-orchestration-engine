@@ -21,9 +21,7 @@ describe('TransactionStateMachineService', () => {
       ],
     }).compile();
 
-    service = module.get<TransactionStateMachineService>(
-      TransactionStateMachineService,
-    );
+    service = module.get<TransactionStateMachineService>(TransactionStateMachineService);
   });
 
   // ----------------------------------------------------------------
@@ -69,9 +67,7 @@ describe('TransactionStateMachineService', () => {
     ];
 
     test.each(validCases)('%s → %s should not throw', (fromState, toState) => {
-      expect(() =>
-        service.assertValidTransition('txn-123', fromState, toState),
-      ).not.toThrow();
+      expect(() => service.assertValidTransition('txn-123', fromState, toState)).not.toThrow();
     });
   });
 
@@ -104,9 +100,9 @@ describe('TransactionStateMachineService', () => {
     test.each(invalidCases)(
       '%s → %s should throw InvalidStateTransitionException',
       (fromState, toState) => {
-        expect(() =>
-          service.assertValidTransition('txn-123', fromState, toState),
-        ).toThrow(InvalidStateTransitionException);
+        expect(() => service.assertValidTransition('txn-123', fromState, toState)).toThrow(
+          InvalidStateTransitionException,
+        );
       },
     );
   });
@@ -205,20 +201,14 @@ describe('TransactionStateMachineService', () => {
   describe('canTransition', () => {
     it('should return true for valid transition', () => {
       expect(
-        service.canTransition(
-          TransactionState.AUTHORISED,
-          TransactionState.CAPTURE_INITIATED,
-        ),
+        service.canTransition(TransactionState.AUTHORISED, TransactionState.CAPTURE_INITIATED),
       ).toBe(true);
     });
 
     it('should return false for invalid transition', () => {
-      expect(
-        service.canTransition(
-          TransactionState.CREATED,
-          TransactionState.REFUNDED,
-        ),
-      ).toBe(false);
+      expect(service.canTransition(TransactionState.CREATED, TransactionState.REFUNDED)).toBe(
+        false,
+      );
     });
   });
 });

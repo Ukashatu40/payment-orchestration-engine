@@ -1,16 +1,9 @@
 // test/scenarios/fs-04-capture-5xx.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
-import {
-  initiatePayment,
-  makeHeaders,
-} from '../integration/helpers/request.helper';
+import { initiatePayment, makeHeaders } from '../integration/helpers/request.helper';
 import { TransactionStateMachineService } from '../../src/modules/transactions/state-machine/transaction-state-machine.service';
 import { TransactionRepository } from '../../src/modules/transactions/repositories/transaction.repository';
 import { TransactionState, PaymentMethod } from '../../src/common/enums';

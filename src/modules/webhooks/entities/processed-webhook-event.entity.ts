@@ -1,12 +1,6 @@
 // src/modules/webhooks/entities/processed-webhook-event.entity.ts
 
-import {
-  Entity,
-  Column,
-  CreateDateColumn,
-  PrimaryColumn,
-  Index,
-} from 'typeorm';
+import { Entity, Column, CreateDateColumn, PrimaryColumn, Index } from 'typeorm';
 import { PaymentGateway } from '../../../common/enums';
 
 // Deduplication store — composite PK (gateway, event_id)

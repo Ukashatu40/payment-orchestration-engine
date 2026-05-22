@@ -20,10 +20,7 @@ import { PaymentGateway, PaymentMethod } from '../../../common/enums';
 @Injectable()
 export class StripeAdapter extends BaseMockAdapter implements IGatewayAdapter {
   readonly gateway = PaymentGateway.STRIPE;
-  readonly supportedMethods = [
-    PaymentMethod.CARD_CREDIT,
-    PaymentMethod.CARD_DEBIT,
-  ];
+  readonly supportedMethods = [PaymentMethod.CARD_CREDIT, PaymentMethod.CARD_DEBIT];
 
   constructor() {
     super(StripeAdapter.name);

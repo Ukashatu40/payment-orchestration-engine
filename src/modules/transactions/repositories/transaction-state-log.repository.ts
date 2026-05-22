@@ -13,16 +13,12 @@ export class TransactionStateLogRepository {
   }
 
   // Append only — no update, no delete methods exist on this class
-  async append(
-    data: Partial<TransactionStateLog>,
-  ): Promise<TransactionStateLog> {
+  async append(data: Partial<TransactionStateLog>): Promise<TransactionStateLog> {
     const entry = this.repo.create(data);
     return this.repo.save(entry);
   }
 
-  async findByTransactionId(
-    transactionId: string,
-  ): Promise<TransactionStateLog[]> {
+  async findByTransactionId(transactionId: string): Promise<TransactionStateLog[]> {
     return this.repo.find({
       where: { transactionId },
       order: { createdAt: 'ASC' },

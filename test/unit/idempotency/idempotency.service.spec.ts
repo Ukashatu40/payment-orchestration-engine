@@ -33,9 +33,7 @@ function buildMocks(
     insertProcessing: jest
       .fn()
       .mockResolvedValue(
-        inserted === undefined
-          ? { merchantId: MERCHANT_ID, key: IDEM_KEY }
-          : inserted,
+        inserted === undefined ? { merchantId: MERCHANT_ID, key: IDEM_KEY } : inserted,
       ),
     markCompleted: jest.fn().mockResolvedValue(undefined),
     markFailed: jest.fn().mockResolvedValue(undefined),
@@ -48,9 +46,7 @@ function buildMocks(
   const mockDataSource = {
     transaction: jest
       .fn()
-      .mockImplementation((cb: (m: typeof mockManager) => Promise<unknown>) =>
-        cb(mockManager),
-      ),
+      .mockImplementation((cb: (m: typeof mockManager) => Promise<unknown>) => cb(mockManager)),
   };
 
   return { mockIdempotencyKeyRepo, mockDataSource, mockManager };
@@ -87,11 +83,7 @@ describe('IdempotencyService', () => {
     beforeEach(() => buildService({ existing: null }));
 
     it('should return isNewRequest: true for a new key', async () => {
-      const result = await service.acquireOrReturn(
-        MERCHANT_ID,
-        IDEM_KEY,
-        REQUEST_BODY,
-      );
+      const result = await service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY);
 
       expect(result.isNewRequest).toBe(true);
       expect(result.cachedResponse).toBeUndefined();
@@ -109,9 +101,7 @@ describe('IdempotencyService', () => {
     it('should insert key with PROCESSING status', async () => {
       await service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY);
 
-      expect(
-        mocks.mockIdempotencyKeyRepo.insertProcessing,
-      ).toHaveBeenCalledWith(
+      expect(mocks.mockIdempotencyKeyRepo.insertProcessing).toHaveBeenCalledWith(
         MERCHANT_ID,
         IDEM_KEY,
         expect.any(String), // SHA-256 hash
@@ -137,11 +127,7 @@ describe('IdempotencyService', () => {
     );
 
     it('should return cached response without hitting gateway again', async () => {
-      const result = await service.acquireOrReturn(
-        MERCHANT_ID,
-        IDEM_KEY,
-        REQUEST_BODY,
-      );
+      const result = await service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY);
 
       expect(result.isNewRequest).toBe(false);
       expect(result.cachedResponse?.code).toBe(200);
@@ -151,9 +137,7 @@ describe('IdempotencyService', () => {
     it('should not attempt to insert a new key', async () => {
       await service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY);
 
-      expect(
-        mocks.mockIdempotencyKeyRepo.insertProcessing,
-      ).not.toHaveBeenCalled();
+      expect(mocks.mockIdempotencyKeyRepo.insertProcessing).not.toHaveBeenCalled();
     });
   });
 
@@ -164,19 +148,15 @@ describe('IdempotencyService', () => {
     beforeEach(() => buildService({ existing: { status: 'PROCESSING' } }));
 
     it('should throw IdempotencyConflictException', async () => {
-      await expect(
-        service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY),
-      ).rejects.toThrow(IdempotencyConflictException);
+      await expect(service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY)).rejects.toThrow(
+        IdempotencyConflictException,
+      );
     });
 
     it('should not insert a new key', async () => {
-      await expect(
-        service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY),
-      ).rejects.toThrow();
+      await expect(service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY)).rejects.toThrow();
 
-      expect(
-        mocks.mockIdempotencyKeyRepo.insertProcessing,
-      ).not.toHaveBeenCalled();
+      expect(mocks.mockIdempotencyKeyRepo.insertProcessing).not.toHaveBeenCalled();
     });
   });
 
@@ -187,11 +167,7 @@ describe('IdempotencyService', () => {
     beforeEach(() => buildService({ existing: { status: 'FAILED' } }));
 
     it('should delete the failed key and allow retry', async () => {
-      const result = await service.acquireOrReturn(
-        MERCHANT_ID,
-        IDEM_KEY,
-        REQUEST_BODY,
-      );
+      const result = await service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY);
 
       // Should have deleted the failed record
       expect(mocks.mockManager.query).toHaveBeenCalledWith(
@@ -234,9 +210,9 @@ describe('IdempotencyService', () => {
       // Explicitly force the mock to return null right before the call
       mocks.mockIdempotencyKeyRepo.insertProcessing.mockResolvedValueOnce(null);
 
-      await expect(
-        service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY),
-      ).rejects.toThrow(IdempotencyConflictException);
+      await expect(service.acquireOrReturn(MERCHANT_ID, IDEM_KEY, REQUEST_BODY)).rejects.toThrow(
+        IdempotencyConflictException,
+      );
     });
   });
 
@@ -249,13 +225,7 @@ describe('IdempotencyService', () => {
     it('should call repo markCompleted with correct args', async () => {
       const responseBody = { id: 'txn-xyz', state: 'CAPTURED' };
 
-      await service.markCompleted(
-        MERCHANT_ID,
-        IDEM_KEY,
-        201,
-        responseBody,
-        'txn-uuid-001',
-      );
+      await service.markCompleted(MERCHANT_ID, IDEM_KEY, 201, responseBody, 'txn-uuid-001');
 
       expect(mocks.mockIdempotencyKeyRepo.markCompleted).toHaveBeenCalledWith(
         MERCHANT_ID,
@@ -276,10 +246,7 @@ describe('IdempotencyService', () => {
     it('should call repo markFailed with correct args', async () => {
       await service.markFailed(MERCHANT_ID, IDEM_KEY);
 
-      expect(mocks.mockIdempotencyKeyRepo.markFailed).toHaveBeenCalledWith(
-        MERCHANT_ID,
-        IDEM_KEY,
-      );
+      expect(mocks.mockIdempotencyKeyRepo.markFailed).toHaveBeenCalledWith(MERCHANT_ID, IDEM_KEY);
     });
   });
 
@@ -329,10 +296,9 @@ describe('IdempotencyService', () => {
 
       // Lock for merchant B would use a different key
       // `merchant-B:same-uuid-key` ≠ `merchant-A:same-uuid-key`
-      expect(mocks.mockManager.query).not.toHaveBeenCalledWith(
-        expect.anything(),
-        [`${merchantB}:${sharedKey}`],
-      );
+      expect(mocks.mockManager.query).not.toHaveBeenCalledWith(expect.anything(), [
+        `${merchantB}:${sharedKey}`,
+      ]);
     });
   });
 });

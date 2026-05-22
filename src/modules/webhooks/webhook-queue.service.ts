@@ -80,11 +80,7 @@ export class WebhookQueueService {
     await this.webhookQueueRepo.markCompleted(queueId);
   }
 
-  async markFailed(
-    queueId: string,
-    error: string,
-    retryCount: number,
-  ): Promise<void> {
+  async markFailed(queueId: string, error: string, retryCount: number): Promise<void> {
     await this.webhookQueueRepo.markFailedWithRetry(queueId, error, retryCount);
   }
 
@@ -92,10 +88,7 @@ export class WebhookQueueService {
   // Extracts the gateway-specific event ID from the payload.
   // Each gateway uses a different field name (Section A5.4).
   // ----------------------------------------------------------------
-  extractEventId(
-    gateway: PaymentGateway,
-    payload: Record<string, unknown>,
-  ): string {
+  extractEventId(gateway: PaymentGateway, payload: Record<string, unknown>): string {
     switch (gateway) {
       case PaymentGateway.RAZORPAY:
         return (
@@ -118,10 +111,7 @@ export class WebhookQueueService {
   // Extracts the event type from the payload.
   // Used for audit logging and state machine routing.
   // ----------------------------------------------------------------
-  extractEventType(
-    gateway: PaymentGateway,
-    payload: Record<string, unknown>,
-  ): string {
+  extractEventType(gateway: PaymentGateway, payload: Record<string, unknown>): string {
     switch (gateway) {
       case PaymentGateway.RAZORPAY:
         return payload['event'] as string;

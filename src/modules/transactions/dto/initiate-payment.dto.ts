@@ -1,14 +1,6 @@
 // src/modules/transactions/dto/initiate-payment.dto.ts
 
-import {
-  IsString,
-  IsNotEmpty,
-  IsEnum,
-  IsOptional,
-  IsObject,
-  IsInt,
-  Min,
-} from 'class-validator';
+import { IsString, IsNotEmpty, IsEnum, IsOptional, IsObject, IsInt, Min } from 'class-validator';
 import { PaymentMethod } from '../../../common/enums';
 
 export class InitiatePaymentRequestDto {

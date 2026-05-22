@@ -134,12 +134,7 @@ export class TransactionStateMachineService {
   ): void {
     // Terminal states have no valid outgoing transitions
     if (TERMINAL_STATES.has(fromState)) {
-      throw new InvalidStateTransitionException(
-        transactionId,
-        fromState,
-        toState,
-        [],
-      );
+      throw new InvalidStateTransitionException(transactionId, fromState, toState, []);
     }
 
     const validTargets = VALID_TRANSITIONS.get(fromState);
@@ -147,12 +142,7 @@ export class TransactionStateMachineService {
     // fromState not in the map at all — should never happen
     // if VALID_TRANSITIONS is complete, but guard defensively
     if (!validTargets) {
-      throw new InvalidStateTransitionException(
-        transactionId,
-        fromState,
-        toState,
-        [],
-      );
+      throw new InvalidStateTransitionException(transactionId, fromState, toState, []);
     }
 
     if (!validTargets.has(toState)) {
@@ -176,10 +166,7 @@ export class TransactionStateMachineService {
     return Array.from(VALID_TRANSITIONS.get(state) ?? []);
   }
 
-  canTransition(
-    fromState: TransactionState,
-    toState: TransactionState,
-  ): boolean {
+  canTransition(fromState: TransactionState, toState: TransactionState): boolean {
     return VALID_TRANSITIONS.get(fromState)?.has(toState) ?? false;
   }
 }

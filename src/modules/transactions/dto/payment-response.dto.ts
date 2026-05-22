@@ -1,10 +1,6 @@
 // src/modules/transactions/dto/payment-response.dto.ts
 
-import {
-  TransactionState,
-  PaymentGateway,
-  PaymentMethod,
-} from '../../../common/enums';
+import { TransactionState, PaymentGateway, PaymentMethod } from '../../../common/enums';
 import { Transaction } from '../entities/transaction.entity';
 
 // Shapes the API response — converts bigint to number for JSON

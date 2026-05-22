@@ -1,11 +1,7 @@
 // test/scenarios/fs-07-cascade-gateway-failure.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { makeHeaders } from '../integration/helpers/request.helper';
 import { CircuitBreakerService } from '../../src/modules/gateways/circuit-breaker/circuit-breaker.service';
@@ -31,18 +27,12 @@ describe('FS-07: Cascade Gateway Failure', () => {
   it('should route to healthy gateway when primary is OPEN', async () => {
     // Trip Razorpay circuit breaker
     for (let i = 0; i < 5; i++) {
-      circuitBreaker.recordFailure(
-        PaymentGateway.RAZORPAY,
-        PaymentMethod.CARD_CREDIT,
-      );
+      circuitBreaker.recordFailure(PaymentGateway.RAZORPAY, PaymentMethod.CARD_CREDIT);
     }
 
-    expect(
-      circuitBreaker.getState(
-        PaymentGateway.RAZORPAY,
-        PaymentMethod.CARD_CREDIT,
-      ),
-    ).toBe(CircuitBreakerState.OPEN);
+    expect(circuitBreaker.getState(PaymentGateway.RAZORPAY, PaymentMethod.CARD_CREDIT)).toBe(
+      CircuitBreakerState.OPEN,
+    );
 
     // Payment should still succeed via Stripe or PayU
     const response = await app.inject({
@@ -68,22 +58,14 @@ describe('FS-07: Cascade Gateway Failure', () => {
   });
 
   it('should return 503 when all gateways for a method are OPEN', async () => {
-    [
-      PaymentGateway.RAZORPAY,
-      PaymentGateway.STRIPE,
-      PaymentGateway.PAYU,
-    ].forEach((gw) => {
+    [PaymentGateway.RAZORPAY, PaymentGateway.STRIPE, PaymentGateway.PAYU].forEach((gw) => {
       for (let i = 0; i < 5; i++) {
         circuitBreaker.recordFailure(gw, PaymentMethod.CARD_CREDIT);
       }
     });
 
     // Verify all three are OPEN before making the request
-    [
-      PaymentGateway.RAZORPAY,
-      PaymentGateway.STRIPE,
-      PaymentGateway.PAYU,
-    ].forEach((gw) => {
+    [PaymentGateway.RAZORPAY, PaymentGateway.STRIPE, PaymentGateway.PAYU].forEach((gw) => {
       const state = circuitBreaker.getState(gw, PaymentMethod.CARD_CREDIT);
       console.log(`${gw} state:`, state);
       expect(state).toBe(CircuitBreakerState.OPEN);
@@ -107,32 +89,12 @@ describe('FS-07: Cascade Gateway Failure', () => {
   });
 
   it('should give OPEN gateway health score of 0.0', () => {
-    circuitBreaker.recordFailure(
-      PaymentGateway.PAYU,
-      PaymentMethod.CARD_CREDIT,
-    );
-    circuitBreaker.recordFailure(
-      PaymentGateway.PAYU,
-      PaymentMethod.CARD_CREDIT,
-    );
-    circuitBreaker.recordFailure(
-      PaymentGateway.PAYU,
-      PaymentMethod.CARD_CREDIT,
-    );
-    circuitBreaker.recordFailure(
-      PaymentGateway.PAYU,
-      PaymentMethod.CARD_CREDIT,
-    );
-    circuitBreaker.recordFailure(
-      PaymentGateway.PAYU,
-      PaymentMethod.CARD_CREDIT,
-    );
+    circuitBreaker.recordFailure(PaymentGateway.PAYU, PaymentMethod.CARD_CREDIT);
+    circuitBreaker.recordFailure(PaymentGateway.PAYU, PaymentMethod.CARD_CREDIT);
+    circuitBreaker.recordFailure(PaymentGateway.PAYU, PaymentMethod.CARD_CREDIT);
+    circuitBreaker.recordFailure(PaymentGateway.PAYU, PaymentMethod.CARD_CREDIT);
+    circuitBreaker.recordFailure(PaymentGateway.PAYU, PaymentMethod.CARD_CREDIT);
 
-    expect(
-      circuitBreaker.getHealthScore(
-        PaymentGateway.PAYU,
-        PaymentMethod.CARD_CREDIT,
-      ),
-    ).toBe(0.0);
+    expect(circuitBreaker.getHealthScore(PaymentGateway.PAYU, PaymentMethod.CARD_CREDIT)).toBe(0.0);
   });
 });

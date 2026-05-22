@@ -1,11 +1,7 @@
 // test/scenarios/fs-09-concurrent-race.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { makeHeaders } from '../integration/helpers/request.helper';
 import { v4 as uuidv4 } from 'uuid';
@@ -48,16 +44,10 @@ describe('FS-09: Concurrent Idempotency Race Condition', () => {
     // Log first failure for diagnosis
     const firstFailure = responses.find((r) => r.statusCode >= 400);
     if (firstFailure) {
-      console.log(
-        'Failed response:',
-        firstFailure.statusCode,
-        firstFailure.body,
-      );
+      console.log('Failed response:', firstFailure.statusCode, firstFailure.body);
     }
     // Exactly one success — rest must be 409 or same cached 200/201
-    const successCount = statusCodes.filter(
-      (s) => s === 200 || s === 201,
-    ).length;
+    const successCount = statusCodes.filter((s) => s === 200 || s === 201).length;
 
     expect(successCount).toBeGreaterThanOrEqual(1);
 

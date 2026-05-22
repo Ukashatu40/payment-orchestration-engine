@@ -2,10 +2,7 @@
 
 import { Logger } from '@nestjs/common';
 import { MockControl, MockResponse } from './mock-control.enum';
-import {
-  GatewayTimeoutException,
-  GatewayUnavailableException,
-} from '../../../common/exceptions';
+import { GatewayTimeoutException, GatewayUnavailableException } from '../../../common/exceptions';
 import { PaymentGateway } from '../../../common/enums';
 
 export abstract class BaseMockAdapter {
@@ -40,10 +37,7 @@ export abstract class BaseMockAdapter {
   ): Promise<void> {
     // Simulate gateway completely unreachable (FS-07)
     if (control.mockGatewayDown) {
-      throw new GatewayUnavailableException(
-        gateway,
-        'Mock gateway marked as down',
-      );
+      throw new GatewayUnavailableException(gateway, 'Mock gateway marked as down');
     }
 
     // Simulate configurable latency
@@ -66,10 +60,7 @@ export abstract class BaseMockAdapter {
 
     // Rate limit — caller handles 429 with Retry-After (Section A8.4)
     if (control.mockResponse === MockResponse.RATE_LIMIT) {
-      throw new GatewayUnavailableException(
-        gateway,
-        'HTTP 429 Too Many Requests. Retry-After: 5',
-      );
+      throw new GatewayUnavailableException(gateway, 'HTTP 429 Too Many Requests. Retry-After: 5');
     }
   }
 

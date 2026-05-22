@@ -4,15 +4,8 @@ import * as path from 'path';
 // Load test environment before building the app
 dotenv.config({ path: path.join(__dirname, '../../../.env.test') });
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  INestApplication,
-  ValidationPipe,
-  VersioningType,
-} from '@nestjs/common';
-import {
-  NestFastifyApplication,
-  FastifyAdapter,
-} from '@nestjs/platform-fastify';
+import { INestApplication, ValidationPipe, VersioningType } from '@nestjs/common';
+import { NestFastifyApplication, FastifyAdapter } from '@nestjs/platform-fastify';
 import { AppModule } from '../../../src/app.module';
 import { GlobalExceptionFilter } from '../../../src/common/filters/global-exception.filter';
 import { TraceIdInterceptor } from '../../../src/common/interceptors/trace-id.interceptor';
@@ -27,13 +20,10 @@ export async function buildApp(): Promise<NestFastifyApplication> {
     imports: [AppModule],
   }).compile();
 
-  app = moduleFixture.createNestApplication<NestFastifyApplication>(
-    new FastifyAdapter(),
-    {
-      // Disable NestJS body parser — we register our own below
-      bodyParser: false,
-    },
-  );
+  app = moduleFixture.createNestApplication<NestFastifyApplication>(new FastifyAdapter(), {
+    // Disable NestJS body parser — we register our own below
+    bodyParser: false,
+  });
 
   // Register raw body parser before app.init()
   // Must remove existing parser first then add ours
@@ -43,7 +33,7 @@ export async function buildApp(): Promise<NestFastifyApplication> {
     'application/json',
     { parseAs: 'buffer' },
     (_req: any, body: Buffer, done: any) => {
-      (_req as any).rawBody = body;
+      _req.rawBody = body;
       try {
         done(null, JSON.parse(body.toString('utf8')));
       } catch (err) {
@@ -62,12 +52,8 @@ export async function buildApp(): Promise<NestFastifyApplication> {
       },
       // Ensure transform errors surface as 400 not 500
       exceptionFactory: (errors) => {
-        const messages = errors.map((e) =>
-          Object.values(e.constraints ?? {}).join(', '),
-        );
-        return new (require('@nestjs/common').BadRequestException)(
-          messages.join('; '),
-        );
+        const messages = errors.map((e) => Object.values(e.constraints ?? {}).join(', '));
+        return new (require('@nestjs/common').BadRequestException)(messages.join('; '));
       },
     }),
   );

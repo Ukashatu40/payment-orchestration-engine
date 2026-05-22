@@ -1,11 +1,6 @@
 // src/modules/reconciliation/reconciliation.scheduler.ts
 
-import {
-  Injectable,
-  Logger,
-  OnModuleInit,
-  OnModuleDestroy,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ReconciliationService } from './reconciliation.service';
 import { GatewayHealthService } from '../gateways/health/gateway-health.service';
 import { IdempotencyService } from '../idempotency/idempotency.service';
@@ -23,19 +18,13 @@ export class ReconciliationScheduler implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     // Reconciliation — every 15 minutes (Section A5.5)
-    this.intervals.push(
-      setInterval(() => this.runReconciliation(), 15 * 60 * 1000),
-    );
+    this.intervals.push(setInterval(() => this.runReconciliation(), 15 * 60 * 1000));
 
     // Health metrics flush — every 60 seconds (Section A3.1)
-    this.intervals.push(
-      setInterval(() => this.flushHealthMetrics(), 60 * 1000),
-    );
+    this.intervals.push(setInterval(() => this.flushHealthMetrics(), 60 * 1000));
 
     // Idempotency key cleanup — every 6 hours
-    this.intervals.push(
-      setInterval(() => this.purgeIdempotencyKeys(), 6 * 60 * 60 * 1000),
-    );
+    this.intervals.push(setInterval(() => this.purgeIdempotencyKeys(), 6 * 60 * 60 * 1000));
 
     this.logger.log('Schedulers started', {
       reconciliation: '15 minutes',

@@ -1,11 +1,7 @@
 // test/scenarios/fs-05-partial-capture.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { makeHeaders } from '../integration/helpers/request.helper';
 import { TransactionRepository } from '../../src/modules/transactions/repositories/transaction.repository';

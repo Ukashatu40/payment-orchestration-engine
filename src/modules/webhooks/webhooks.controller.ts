@@ -12,6 +12,7 @@ import {
   Query,
   Version,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiSecurity } from '@nestjs/swagger';
 import { type FastifyRequest } from 'fastify';
 import { WebhookSignatureService } from './verification/webhook-signature.service';
 import { WebhookQueueService } from './webhook-queue.service';
@@ -19,6 +20,8 @@ import { WebhookProcessorService } from './webhook-processor.service';
 import { GatewayConfigRepository } from '../gateways/repositories/gateway-config.repository';
 import { PaymentGateway } from '../../common/enums';
 
+@ApiTags('webhooks')
+@ApiSecurity('X-API-Key')
 @Controller({ path: 'webhooks', version: '1' })
 export class WebhooksController {
   constructor(
@@ -31,15 +34,17 @@ export class WebhooksController {
   // POST /api/v1/webhooks/razorpay
   @Post('razorpay')
   @HttpCode(HttpStatus.OK)
-  async razorpayWebhook(
-    @Req() req: FastifyRequest,
-  ): Promise<{ received: true }> {
+  @ApiOperation({ summary: 'Handle Razorpay webhook' })
+  @ApiResponse({ status: 200, description: 'Webhook received' })
+  async razorpayWebhook(@Req() req: FastifyRequest): Promise<{ received: true }> {
     return this.handleWebhook(PaymentGateway.RAZORPAY, req);
   }
 
   // POST /api/v1/webhooks/stripe
   @Post('stripe')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle Stripe webhook' })
+  @ApiResponse({ status: 200, description: 'Webhook received' })
   async stripeWebhook(@Req() req: FastifyRequest): Promise<{ received: true }> {
     return this.handleWebhook(PaymentGateway.STRIPE, req);
   }
@@ -47,6 +52,8 @@ export class WebhooksController {
   // POST /api/v1/webhooks/payu
   @Post('payu')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle PayU webhook' })
+  @ApiResponse({ status: 200, description: 'Webhook received' })
   async payuWebhook(@Req() req: FastifyRequest): Promise<{ received: true }> {
     return this.handleWebhook(PaymentGateway.PAYU, req);
   }
@@ -54,12 +61,16 @@ export class WebhooksController {
   // POST /api/v1/webhooks/upi
   @Post('upi')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle UPI webhook' })
+  @ApiResponse({ status: 200, description: 'Webhook received' })
   async upiWebhook(@Req() req: FastifyRequest): Promise<{ received: true }> {
     return this.handleWebhook(PaymentGateway.UPI, req);
   }
 
   // GET /api/v1/webhooks/dlq
   @Get('dlq')
+  @ApiOperation({ summary: 'Retrieve failed webhooks' })
+  @ApiResponse({ status: 200, description: 'Failed webhooks retrieved' })
   async getDLQ(@Query('gateway') gateway?: PaymentGateway) {
     return this.queueService.getDLQ(gateway);
   }
@@ -67,6 +78,8 @@ export class WebhooksController {
   // POST /api/v1/webhooks/dlq/:id/replay
   @Post('dlq/:id/replay')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Replay a failed webhook' })
+  @ApiResponse({ status: 200, description: 'Webhook replayed' })
   async replayDLQ(@Param('id') id: string): Promise<{ replayed: true }> {
     await this.queueService.replayFromDLQ(id);
     return { replayed: true };

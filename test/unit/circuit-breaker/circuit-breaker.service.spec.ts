@@ -72,9 +72,7 @@ describe('CircuitBreakerService', () => {
       service.recordFailure(gw, pm);
       service.recordFailure(gw, pm);
 
-      await expect(service.guardRequest(gw, pm)).rejects.toThrow(
-        GatewayUnavailableException,
-      );
+      await expect(service.guardRequest(gw, pm)).rejects.toThrow(GatewayUnavailableException);
     });
   });
 

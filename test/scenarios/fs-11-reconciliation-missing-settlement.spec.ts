@@ -1,20 +1,12 @@
 // test/scenarios/fs-11-reconciliation-missing-settlement.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { makeHeaders } from '../integration/helpers/request.helper';
 import { TransactionRepository } from '../../src/modules/transactions/repositories/transaction.repository';
 import { ReconciliationService } from '../../src/modules/reconciliation/reconciliation.service';
-import {
-  TransactionState,
-  PaymentMethod,
-  PaymentGateway,
-} from '../../src/common/enums';
+import { TransactionState, PaymentMethod, PaymentGateway } from '../../src/common/enums';
 import { DiscrepancyType } from '../../src/modules/reconciliation/entities/reconciliation-log.entity';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -74,10 +66,7 @@ describe('FS-11: Reconciliation Detects Missing Settlement', () => {
     // If any discrepancies were found, they must require review
     // (cannot auto-resolve CAPTURED → FAILED discrepancy per FS-11)
     anomalies.forEach((anomaly: any) => {
-      if (
-        anomaly.discrepancy_type ===
-        DiscrepancyType.INTERNAL_CAPTURED_GATEWAY_FAILED
-      ) {
+      if (anomaly.discrepancy_type === DiscrepancyType.INTERNAL_CAPTURED_GATEWAY_FAILED) {
         expect(anomaly.requires_review).toBe(true);
         expect(anomaly.resolved).toBe(false);
       }

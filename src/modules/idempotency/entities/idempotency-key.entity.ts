@@ -1,13 +1,6 @@
 // src/modules/idempotency/entities/idempotency-key.entity.ts
 
-import {
-  Entity,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  PrimaryColumn,
-  Index,
-} from 'typeorm';
+import { Entity, Column, CreateDateColumn, UpdateDateColumn, PrimaryColumn, Index } from 'typeorm';
 
 // No BaseEntity — composite PK, not UUID
 @Entity('idempotency_keys')

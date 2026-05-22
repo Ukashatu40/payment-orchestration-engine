@@ -27,12 +27,7 @@ describe('WebhookSignatureService', () => {
     it('should pass with valid signature', () => {
       const sig = makeHmac(RAW_BODY);
       expect(() =>
-        service.verify(
-          PaymentGateway.RAZORPAY,
-          RAW_BODY,
-          { 'x-razorpay-signature': sig },
-          SECRET,
-        ),
+        service.verify(PaymentGateway.RAZORPAY, RAW_BODY, { 'x-razorpay-signature': sig }, SECRET),
       ).not.toThrow();
     });
 
@@ -48,9 +43,9 @@ describe('WebhookSignatureService', () => {
     });
 
     it('should throw on missing header', () => {
-      expect(() =>
-        service.verify(PaymentGateway.RAZORPAY, RAW_BODY, {}, SECRET),
-      ).toThrow(WebhookSignatureInvalidException);
+      expect(() => service.verify(PaymentGateway.RAZORPAY, RAW_BODY, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
     });
 
     it('should throw when payload is tampered (FS-10)', () => {
@@ -80,12 +75,7 @@ describe('WebhookSignatureService', () => {
       const sigHeader = `t=${timestamp},v1=${sig}`;
 
       expect(() =>
-        service.verify(
-          PaymentGateway.STRIPE,
-          RAW_BODY,
-          { 'stripe-signature': sigHeader },
-          SECRET,
-        ),
+        service.verify(PaymentGateway.STRIPE, RAW_BODY, { 'stripe-signature': sigHeader }, SECRET),
       ).not.toThrow();
     });
 
@@ -96,12 +86,7 @@ describe('WebhookSignatureService', () => {
       const sigHeader = `t=${oldTimestamp},v1=${sig}`;
 
       expect(() =>
-        service.verify(
-          PaymentGateway.STRIPE,
-          RAW_BODY,
-          { 'stripe-signature': sigHeader },
-          SECRET,
-        ),
+        service.verify(PaymentGateway.STRIPE, RAW_BODY, { 'stripe-signature': sigHeader }, SECRET),
       ).toThrow(WebhookSignatureInvalidException);
     });
 
@@ -125,12 +110,7 @@ describe('WebhookSignatureService', () => {
       const sig = makeHmac(RAW_BODY, 'sha256');
 
       expect(() =>
-        service.verify(
-          PaymentGateway.PAYU,
-          RAW_BODY,
-          { 'x-payu-signature': sig },
-          SECRET,
-        ),
+        service.verify(PaymentGateway.PAYU, RAW_BODY, { 'x-payu-signature': sig }, SECRET),
       ).not.toThrow();
     });
 
@@ -139,12 +119,7 @@ describe('WebhookSignatureService', () => {
       const sha512Sig = makeHmac(RAW_BODY, 'sha512');
 
       expect(() =>
-        service.verify(
-          PaymentGateway.PAYU,
-          RAW_BODY,
-          { 'x-payu-signature': sha512Sig },
-          SECRET,
-        ),
+        service.verify(PaymentGateway.PAYU, RAW_BODY, { 'x-payu-signature': sha512Sig }, SECRET),
       ).toThrow(WebhookSignatureInvalidException);
     });
   });

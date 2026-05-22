@@ -3,11 +3,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Transaction } from '../entities/transaction.entity';
-import {
-  TransactionState,
-  PaymentGateway,
-  PaymentMethod,
-} from '../../../common/enums';
+import { TransactionState, PaymentGateway, PaymentMethod } from '../../../common/enums';
 import { RECONCILABLE_STATES } from '../state-machine/state-transitions.map';
 
 @Injectable()
@@ -65,10 +61,7 @@ export class TransactionRepository {
   // Caller must be inside an active EntityManager transaction.
   // Satisfies A8.1 — lock acquired before state validation.
   // ----------------------------------------------------------------
-  async findByIdWithLock(
-    id: string,
-    entityManager: EntityManager,
-  ): Promise<Transaction | null> {
+  async findByIdWithLock(id: string, entityManager: EntityManager): Promise<Transaction | null> {
     return entityManager
       .createQueryBuilder(Transaction, 'txn')
       .setLock('pessimistic_write')
@@ -81,9 +74,7 @@ export class TransactionRepository {
   // Finds transactions stuck in an in-progress state longer than
   // the given threshold — these need gateway status polling.
   // ----------------------------------------------------------------
-  async findStaleTransactions(
-    thresholdMinutes: number,
-  ): Promise<Transaction[]> {
+  async findStaleTransactions(thresholdMinutes: number): Promise<Transaction[]> {
     const reconcilableStates = Array.from(RECONCILABLE_STATES);
     const threshold = new Date(Date.now() - thresholdMinutes * 60 * 1000);
 
@@ -122,8 +113,7 @@ export class TransactionRepository {
     return result.map((row) => ({
       gateway: row.gateway,
       total: parseInt(row.total, 10),
-      successRate:
-        row.total > 0 ? parseFloat(row.captured) / parseInt(row.total, 10) : 0,
+      successRate: row.total > 0 ? parseFloat(row.captured) / parseInt(row.total, 10) : 0,
     }));
   }
 

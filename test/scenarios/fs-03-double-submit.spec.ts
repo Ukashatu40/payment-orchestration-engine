@@ -1,11 +1,7 @@
 // test/scenarios/fs-03-double-submit.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { makeHeaders } from '../integration/helpers/request.helper';
 import { v4 as uuidv4 } from 'uuid';
@@ -68,9 +64,7 @@ describe('FS-03: Double Submit by Customer', () => {
     const conflictCodes = codes.filter((c) => c === 409);
 
     // Must have at least one non-error response
-    expect(successCodes.length + conflictCodes.length).toBeGreaterThanOrEqual(
-      1,
-    );
+    expect(successCodes.length + conflictCodes.length).toBeGreaterThanOrEqual(1);
     expect(successCodes.length).toBeGreaterThanOrEqual(1);
 
     // Database must have exactly ONE transaction for this idempotency key

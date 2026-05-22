@@ -31,10 +31,7 @@ export class CircuitBreakerService implements OnModuleInit {
   // Called by GatewayRouterService before routing a transaction.
   // Throws GatewayUnavailableException if the circuit is OPEN.
   // ----------------------------------------------------------------
-  async guardRequest(
-    gateway: PaymentGateway,
-    paymentMethod: PaymentMethod,
-  ): Promise<void> {
+  async guardRequest(gateway: PaymentGateway, paymentMethod: PaymentMethod): Promise<void> {
     const entry = this.getOrCreateEntry(gateway, paymentMethod);
     const config = this.getConfig(gateway);
 
@@ -59,9 +56,7 @@ export class CircuitBreakerService implements OnModuleInit {
         // Still within timeout window — fail fast (FS-01, FS-07)
         throw new GatewayUnavailableException(
           gateway,
-          `Circuit breaker OPEN. Resets in ${Math.ceil(
-            (config.timeoutMs - elapsed) / 1000,
-          )}s`,
+          `Circuit breaker OPEN. Resets in ${Math.ceil((config.timeoutMs - elapsed) / 1000)}s`,
         );
       }
 
@@ -130,29 +125,23 @@ export class CircuitBreakerService implements OnModuleInit {
     ) {
       // Threshold exceeded — trip the circuit
       this.transitionTo(entry, CircuitBreakerState.OPEN);
-      this.logger.warn(
-        `Circuit OPEN for ${gateway} after ${entry.failureCount} failures`,
-        { gateway, paymentMethod },
-      );
+      this.logger.warn(`Circuit OPEN for ${gateway} after ${entry.failureCount} failures`, {
+        gateway,
+        paymentMethod,
+      });
     }
   }
 
   // ----------------------------------------------------------------
   // Read-only helpers — used by GatewayRouterService for scoring
   // ----------------------------------------------------------------
-  getState(
-    gateway: PaymentGateway,
-    paymentMethod: PaymentMethod,
-  ): CircuitBreakerState {
+  getState(gateway: PaymentGateway, paymentMethod: PaymentMethod): CircuitBreakerState {
     return this.getOrCreateEntry(gateway, paymentMethod).state;
   }
 
   // Returns health score for routing algorithm (Section A3.1)
   // 1.0 = CLOSED (healthy), 0.5 = HALF_OPEN (degraded), 0.0 = OPEN (down)
-  getHealthScore(
-    gateway: PaymentGateway,
-    paymentMethod: PaymentMethod,
-  ): number {
+  getHealthScore(gateway: PaymentGateway, paymentMethod: PaymentMethod): number {
     const state = this.getState(gateway, paymentMethod);
     switch (state) {
       case CircuitBreakerState.CLOSED:
@@ -193,10 +182,7 @@ export class CircuitBreakerService implements OnModuleInit {
     return this.store.get(key)!;
   }
 
-  private transitionTo(
-    entry: CircuitBreakerEntry,
-    newState: CircuitBreakerState,
-  ): void {
+  private transitionTo(entry: CircuitBreakerEntry, newState: CircuitBreakerState): void {
     entry.state = newState;
 
     if (newState === CircuitBreakerState.OPEN) {

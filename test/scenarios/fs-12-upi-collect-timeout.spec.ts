@@ -1,11 +1,7 @@
 // test/scenarios/fs-12-upi-collect-timeout.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { makeHeaders } from '../integration/helpers/request.helper';
 import { TransactionStateMachineService } from '../../src/modules/transactions/state-machine/transaction-state-machine.service';
@@ -44,16 +40,12 @@ describe('FS-12: UPI Collect Flow Timeout', () => {
     });
 
     // Simulate UPI mandate window expiry
-    await stateMachine.transition(
-      transaction.id,
-      TransactionState.AUTH_EXPIRED,
-      {
-        event: 'UPI_MANDATE_EXPIRED',
-        triggeredBy: 'reconciliation_engine',
-        traceId: uuidv4(),
-        metadata: { reason: 'Customer did not approve within 5-minute window' },
-      },
-    );
+    await stateMachine.transition(transaction.id, TransactionState.AUTH_EXPIRED, {
+      event: 'UPI_MANDATE_EXPIRED',
+      triggeredBy: 'reconciliation_engine',
+      traceId: uuidv4(),
+      metadata: { reason: 'Customer did not approve within 5-minute window' },
+    });
 
     const updated = await transactionRepo.findById(transaction.id);
     expect(updated!.state).toBe(TransactionState.AUTH_EXPIRED);

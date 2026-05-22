@@ -7,8 +7,7 @@ export class GatewayTimeoutException extends Error {
 
   constructor(gateway: string, timeoutMs: number, transactionId: string) {
     super(
-      `Gateway ${gateway} timed out after ${timeoutMs}ms ` +
-        `for transaction ${transactionId}`,
+      `Gateway ${gateway} timed out after ${timeoutMs}ms ` + `for transaction ${transactionId}`,
     );
 
     this.name = 'GatewayTimeoutException';

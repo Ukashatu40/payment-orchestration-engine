@@ -6,10 +6,7 @@ import { TransactionRepository } from '../transactions/repositories/transaction.
 import { ReconciliationLogRepository } from './repositories/reconciliation-log.repository';
 import { TransactionStateMachineService } from '../transactions/state-machine/transaction-state-machine.service';
 import { GatewayAdapterRegistry } from '../gateways/adapters/gateway-adapter.registry';
-import {
-  ReconciliationLog,
-  DiscrepancyType,
-} from './entities/reconciliation-log.entity';
+import { ReconciliationLog, DiscrepancyType } from './entities/reconciliation-log.entity';
 import { TransactionState, PaymentGateway } from '../../common/enums';
 import { Transaction } from '../transactions/entities/transaction.entity';
 
@@ -132,10 +129,7 @@ export class ReconciliationService {
 
     try {
       const adapter = this.gatewayRegistry.get(transaction.gateway);
-      const response = await adapter.fetchStatus(
-        transaction.gatewayReference,
-        transaction.traceId,
-      );
+      const response = await adapter.fetchStatus(transaction.gatewayReference, transaction.traceId);
       gatewayStatus = response.status;
     } catch (err) {
       this.logger.warn('Could not fetch gateway status', {
@@ -156,24 +150,18 @@ export class ReconciliationService {
     }
 
     // Step 3: Determine discrepancy type and severity
-    const discrepancyType = this.classifyDiscrepancy(
-      internalState,
-      gatewayStatus,
-    );
+    const discrepancyType = this.classifyDiscrepancy(internalState, gatewayStatus);
 
     // Step 4: Critical anomaly — internal shows captured but gateway shows failed
     // This requires immediate human review. Do NOT auto-resolve. (FS-11)
     if (discrepancyType === DiscrepancyType.INTERNAL_CAPTURED_GATEWAY_FAILED) {
-      this.logger.error(
-        'CRITICAL: Transaction captured internally but failed at gateway',
-        {
-          transactionId: transaction.id,
-          gateway: transaction.gateway,
-          internalState,
-          gatewayStatus,
-          runId,
-        },
-      );
+      this.logger.error('CRITICAL: Transaction captured internally but failed at gateway', {
+        transactionId: transaction.id,
+        gateway: transaction.gateway,
+        internalState,
+        gatewayStatus,
+        runId,
+      });
 
       return {
         runId,
@@ -192,10 +180,7 @@ export class ReconciliationService {
 
     // Step 5: Auto-resolvable discrepancy
     // Gateway is the source of truth — apply its state (Section A5.5)
-    if (
-      gatewayMappedState &&
-      this.stateMachine.canTransition(internalState, gatewayMappedState)
-    ) {
+    if (gatewayMappedState && this.stateMachine.canTransition(internalState, gatewayMappedState)) {
       try {
         await this.stateMachine.transition(transaction.id, gatewayMappedState, {
           event: 'RECONCILIATION_OVERRIDE',

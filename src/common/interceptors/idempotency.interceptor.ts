@@ -33,19 +33,14 @@ export class IdempotencyKeyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    const idempotencyKey = request.headers['idempotency-key'] as
-      | string
-      | undefined;
+    const idempotencyKey = request.headers['idempotency-key'] as string | undefined;
 
     if (!idempotencyKey) {
-      throw new BadRequestException(
-        'Idempotency-Key header is required for POST requests',
-      );
+      throw new BadRequestException('Idempotency-Key header is required for POST requests');
     }
 
     // Basic UUID format validation
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     if (!uuidRegex.test(idempotencyKey)) {
       throw new BadRequestException('Idempotency-Key must be a valid UUID v4');

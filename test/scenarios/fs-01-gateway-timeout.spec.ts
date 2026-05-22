@@ -1,16 +1,9 @@
 // test/scenarios/fs-01-gateway-timeout.spec.ts
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
-import {
-  initiatePayment,
-  makeHeaders,
-} from '../integration/helpers/request.helper';
+import { initiatePayment, makeHeaders } from '../integration/helpers/request.helper';
 import { v4 as uuidv4 } from 'uuid';
 
 describe('FS-01: Gateway Timeout During Authorisation', () => {
@@ -60,9 +53,7 @@ describe('FS-01: Gateway Timeout During Authorisation', () => {
 
     const hasTimeoutOrFailure = logs.some(
       (l: any) =>
-        l.to_state === 'AUTH_TIMEOUT' ||
-        l.to_state === 'AUTH_FAILED' ||
-        l.to_state === 'FAILED',
+        l.to_state === 'AUTH_TIMEOUT' || l.to_state === 'AUTH_FAILED' || l.to_state === 'FAILED',
     );
 
     expect(hasTimeoutOrFailure).toBe(true);

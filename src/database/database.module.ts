@@ -65,10 +65,7 @@ import { ReconciliationLog } from '../modules/reconciliation/entities/reconcilia
         ],
         migrationsRun: true,
         synchronize: false, // never true in production
-        logging:
-          config.get('NODE_ENV') === 'development'
-            ? ['query', 'error']
-            : ['error'],
+        logging: config.get('NODE_ENV') === 'development' ? ['query', 'error'] : ['error'],
         extra: {
           // Connection pool settings (FS-14)
           max: config.get<number>('DB_POOL_MAX', 20),

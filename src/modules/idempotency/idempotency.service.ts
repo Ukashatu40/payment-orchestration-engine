@@ -46,16 +46,10 @@ export class IdempotencyService {
       // composite key string into a stable integer.
       // Lock is released automatically when the transaction commits.
       const lockKey = `${merchantId}:${idempotencyKey}`;
-      await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
-        lockKey,
-      ]);
+      await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [lockKey]);
 
       // Step 2: Check existing record (with lock held — no race)
-      const existing = await this.idempotencyKeyRepo.findByKey(
-        merchantId,
-        idempotencyKey,
-        manager,
-      );
+      const existing = await this.idempotencyKeyRepo.findByKey(merchantId, idempotencyKey, manager);
 
       if (existing) {
         // Case A: Already completed — return cached response
@@ -182,9 +176,6 @@ export class IdempotencyService {
   // Stored so we can detect payload tampering on replay attempts.
   // ----------------------------------------------------------------
   private hashRequest(body: unknown): string {
-    return crypto
-      .createHash('sha256')
-      .update(JSON.stringify(body))
-      .digest('hex');
+    return crypto.createHash('sha256').update(JSON.stringify(body)).digest('hex');
   }
 }

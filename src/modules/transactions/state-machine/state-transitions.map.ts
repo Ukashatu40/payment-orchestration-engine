@@ -122,10 +122,7 @@ export const VALID_TRANSITIONS: ReadonlyMap<
     ]),
   ],
 
-  [
-    TransactionState.DISPUTE_OPENED,
-    new Set([TransactionState.DISPUTE_RESOLVED]),
-  ],
+  [TransactionState.DISPUTE_OPENED, new Set([TransactionState.DISPUTE_RESOLVED])],
 
   // Terminal states — empty sets, no outgoing transitions allowed
   [TransactionState.REFUNDED, new Set()],

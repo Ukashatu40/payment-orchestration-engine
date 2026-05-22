@@ -24,10 +24,7 @@ const PII_FIELDS = new Set([
   'billing_address',
 ]);
 
-export function sanitisePII(
-  response: Record<string, unknown>,
-  depth = 0,
-): Record<string, unknown> {
+export function sanitisePII(response: Record<string, unknown>, depth = 0): Record<string, unknown> {
   // Limit recursion depth — gateway responses are not deeply nested
   if (depth > 3) return { _truncated: true };
 

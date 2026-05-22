@@ -1,12 +1,6 @@
 // src/modules/webhooks/entities/webhook-queue.entity.ts
 
-import {
-  Entity,
-  Column,
-  CreateDateColumn,
-  PrimaryGeneratedColumn,
-  Index,
-} from 'typeorm';
+import { Entity, Column, CreateDateColumn, PrimaryGeneratedColumn, Index } from 'typeorm';
 import { PaymentGateway, WebhookStatus } from '../../../common/enums';
 
 @Entity('webhook_queue')

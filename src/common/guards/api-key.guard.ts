@@ -32,9 +32,7 @@ export class ApiKeyGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<FastifyRequest>();
 
     // Skip API key check for public paths
-    const isPublic = this.publicPaths.some((path) =>
-      request.url.startsWith(path),
-    );
+    const isPublic = this.publicPaths.some((path) => request.url.startsWith(path));
 
     if (isPublic) return true;
 

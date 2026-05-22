@@ -18,10 +18,7 @@ import {
 import { PaymentGateway, PaymentMethod } from '../../../common/enums';
 
 @Injectable()
-export class RazorpayAdapter
-  extends BaseMockAdapter
-  implements IGatewayAdapter
-{
+export class RazorpayAdapter extends BaseMockAdapter implements IGatewayAdapter {
   readonly gateway = PaymentGateway.RAZORPAY;
   readonly supportedMethods = [
     PaymentMethod.CARD_CREDIT,
@@ -124,10 +121,7 @@ export class RazorpayAdapter
     };
   }
 
-  async fetchStatus(
-    gatewayPaymentId: string,
-    traceId: string,
-  ): Promise<GatewayStatusResponse> {
+  async fetchStatus(gatewayPaymentId: string, traceId: string): Promise<GatewayStatusResponse> {
     return {
       gatewayPaymentId,
       status: 'captured',

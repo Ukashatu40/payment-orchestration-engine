@@ -17,9 +17,7 @@ export class ReconciliationLogRepository {
     return this.repo.save(entry);
   }
 
-  async createMany(
-    entries: Partial<ReconciliationLog>[],
-  ): Promise<ReconciliationLog[]> {
+  async createMany(entries: Partial<ReconciliationLog>[]): Promise<ReconciliationLog[]> {
     const records = this.repo.create(entries);
     return this.repo.save(records);
   }

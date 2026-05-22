@@ -91,8 +91,5 @@ export interface IGatewayAdapter {
   void(request: GatewayVoidRequest): Promise<GatewayVoidResponse>;
 
   // Used by reconciliation engine to poll gateway status (Section A5.5)
-  fetchStatus(
-    gatewayPaymentId: string,
-    traceId: string,
-  ): Promise<GatewayStatusResponse>;
+  fetchStatus(gatewayPaymentId: string, traceId: string): Promise<GatewayStatusResponse>;
 }

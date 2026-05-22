@@ -2,11 +2,7 @@
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import * as crypto from 'crypto';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
 import { makeHeaders } from '../integration/helpers/request.helper';
 import { TransactionStateMachineService } from '../../src/modules/transactions/state-machine/transaction-state-machine.service';
@@ -67,10 +63,7 @@ describe('FS-06: Webhook Arrives Before API Response', () => {
     const body = JSON.stringify(payload);
     const secret = 'mock-webhook-secret';
     const ts = Math.floor(Date.now() / 1000).toString();
-    const sig = crypto
-      .createHmac('sha256', secret)
-      .update(`${ts}.${body}`)
-      .digest('hex');
+    const sig = crypto.createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex');
 
     const webhookResponse = await app.inject({
       method: 'POST',
@@ -137,8 +130,6 @@ describe('FS-06: Webhook Arrives Before API Response', () => {
 
     // State must still be CAPTURED — not corrupted
     const updated = await transactionRepo.findById(transaction.id);
-    expect([TransactionState.AUTHORISED, TransactionState.CAPTURED]).toContain(
-      updated!.state,
-    );
+    expect([TransactionState.AUTHORISED, TransactionState.CAPTURED]).toContain(updated!.state);
   });
 });

@@ -19,9 +19,7 @@ export class IdempotencyKeyRepository {
     key: string,
     entityManager?: EntityManager,
   ): Promise<IdempotencyKey | null> {
-    const repo = entityManager
-      ? entityManager.getRepository(IdempotencyKey)
-      : this.repo;
+    const repo = entityManager ? entityManager.getRepository(IdempotencyKey) : this.repo;
 
     return repo.findOne({ where: { merchantId, key } });
   }

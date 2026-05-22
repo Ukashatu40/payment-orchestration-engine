@@ -21,9 +21,7 @@ export class GatewayConfigRepository {
     return this.repo.findOne({ where: { gateway } });
   }
 
-  async findEnabledForMethod(
-    paymentMethod: PaymentMethod,
-  ): Promise<GatewayConfig[]> {
+  async findEnabledForMethod(paymentMethod: PaymentMethod): Promise<GatewayConfig[]> {
     return this.repo
       .createQueryBuilder('gc')
       .where('gc.is_enabled = TRUE')
@@ -33,10 +31,7 @@ export class GatewayConfigRepository {
       .getMany();
   }
 
-  async updateConfig(
-    gateway: PaymentGateway,
-    updates: Partial<GatewayConfig>,
-  ): Promise<void> {
+  async updateConfig(gateway: PaymentGateway, updates: Partial<GatewayConfig>): Promise<void> {
     await this.repo.update({ gateway }, updates as any);
   }
 }

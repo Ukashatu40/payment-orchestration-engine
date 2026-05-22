@@ -105,9 +105,7 @@ describe('GatewayRouterService', () => {
     jest.clearAllMocks();
 
     mockGatewayConfigRepo.findEnabledForMethod.mockResolvedValue(
-      mockGatewayConfigs.filter((c) =>
-        c.supportedMethods.includes(PaymentMethod.CARD_CREDIT),
-      ),
+      mockGatewayConfigs.filter((c) => c.supportedMethods.includes(PaymentMethod.CARD_CREDIT)),
     );
 
     mockHealthService.getSlidingWindowMetrics.mockResolvedValue(mockMetrics);
@@ -146,20 +144,12 @@ describe('GatewayRouterService', () => {
       mockGatewayConfigRepo.findEnabledForMethod.mockResolvedValue([]);
 
       await expect(
-        service.selectGateway(
-          'txn-123',
-          PaymentMethod.CARD_CREDIT,
-          'trace-123',
-        ),
+        service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'trace-123'),
       ).rejects.toThrow(NoGatewayAvailableException);
     });
 
     it('should record routing decision for all scored gateways', async () => {
-      await service.selectGateway(
-        'txn-123',
-        PaymentMethod.CARD_CREDIT,
-        'trace-123',
-      );
+      await service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'trace-123');
 
       const repoMock = mockDataSource.getRepository();
       expect(repoMock.save).toHaveBeenCalledTimes(1);
@@ -177,9 +167,7 @@ describe('GatewayRouterService', () => {
 
     it('should select only UPI when payment method is UPI', async () => {
       mockGatewayConfigRepo.findEnabledForMethod.mockResolvedValue(
-        mockGatewayConfigs.filter((c) =>
-          c.supportedMethods.includes(PaymentMethod.UPI),
-        ),
+        mockGatewayConfigs.filter((c) => c.supportedMethods.includes(PaymentMethod.UPI)),
       );
       mockHealthService.getSlidingWindowMetrics.mockResolvedValue([
         {
@@ -190,11 +178,7 @@ describe('GatewayRouterService', () => {
         },
       ]);
 
-      const selected = await service.selectGateway(
-        'txn-123',
-        PaymentMethod.UPI,
-        'trace-123',
-      );
+      const selected = await service.selectGateway('txn-123', PaymentMethod.UPI, 'trace-123');
 
       expect(selected).toBe(PaymentGateway.UPI);
     });
@@ -207,9 +191,7 @@ describe('GatewayRouterService', () => {
     it('should skip HALF_OPEN gateway when second-best is within threshold', async () => {
       // Stripe is HALF_OPEN but would be selected (higher score)
       mockCircuitBreaker.getState.mockImplementation((gw) =>
-        gw === PaymentGateway.STRIPE
-          ? CircuitBreakerState.HALF_OPEN
-          : CircuitBreakerState.CLOSED,
+        gw === PaymentGateway.STRIPE ? CircuitBreakerState.HALF_OPEN : CircuitBreakerState.CLOSED,
       );
       mockCircuitBreaker.getHealthScore.mockImplementation((gw) =>
         gw === PaymentGateway.STRIPE ? 0.5 : 1.0,
@@ -248,11 +230,7 @@ describe('GatewayRouterService', () => {
       ]);
 
       await expect(
-        service.selectGateway(
-          'txn-123',
-          PaymentMethod.CARD_CREDIT,
-          'trace-123',
-        ),
+        service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'trace-123'),
       ).resolves.not.toThrow();
     });
 

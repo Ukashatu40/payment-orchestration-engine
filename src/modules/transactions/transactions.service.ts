@@ -14,10 +14,7 @@ import { GatewayHealthService } from '../gateways/health/gateway-health.service'
 import { Transaction } from './entities/transaction.entity';
 import { TransactionStateLog } from './entities/transaction-state-log.entity';
 import { TransactionState } from '../../common/enums';
-import {
-  GatewayTimeoutException,
-  GatewayUnavailableException,
-} from '../../common/exceptions';
+import { GatewayTimeoutException, GatewayUnavailableException } from '../../common/exceptions';
 import {
   InitiatePaymentDto,
   CapturePaymentDto,
@@ -111,41 +108,29 @@ export class TransactionsService {
         );
       } catch (err) {
         // No gateway available — transition to ROUTE_FAILED
-        await this.stateMachine.transition(
-          transaction.id,
-          TransactionState.ROUTE_SELECTED,
-          {
-            event: 'ROUTE_SELECTION_STARTED',
-            triggeredBy: 'api_server',
-            traceId: dto.traceId,
-          },
-        );
+        await this.stateMachine.transition(transaction.id, TransactionState.ROUTE_SELECTED, {
+          event: 'ROUTE_SELECTION_STARTED',
+          triggeredBy: 'api_server',
+          traceId: dto.traceId,
+        });
 
-        await this.stateMachine.transition(
-          transaction.id,
-          TransactionState.ROUTE_FAILED,
-          {
-            event: 'NO_GATEWAY_AVAILABLE',
-            triggeredBy: 'api_server',
-            traceId: dto.traceId,
-            metadata: { error: (err as Error).message },
-          },
-        );
+        await this.stateMachine.transition(transaction.id, TransactionState.ROUTE_FAILED, {
+          event: 'NO_GATEWAY_AVAILABLE',
+          triggeredBy: 'api_server',
+          traceId: dto.traceId,
+          metadata: { error: (err as Error).message },
+        });
 
         throw err;
       }
 
       // Step 4a: Transition CREATED → ROUTE_SELECTED
-      await this.stateMachine.transition(
-        transaction.id,
-        TransactionState.ROUTE_SELECTED,
-        {
-          event: 'GATEWAY_SELECTED',
-          triggeredBy: 'api_server',
-          traceId: dto.traceId,
-          metadata: { gateway: selectedGateway },
-        },
-      );
+      await this.stateMachine.transition(transaction.id, TransactionState.ROUTE_SELECTED, {
+        event: 'GATEWAY_SELECTED',
+        triggeredBy: 'api_server',
+        traceId: dto.traceId,
+        metadata: { gateway: selectedGateway },
+      });
 
       // Step 4b: Transition ROUTE_SELECTED → AUTH_INITIATED
       // Lock is acquired and released inside transition().
@@ -196,15 +181,9 @@ export class TransactionsService {
 
         // Record circuit breaker result
         if (authResponse.status === 'authorised') {
-          this.circuitBreaker.recordSuccess(
-            selectedGateway as any,
-            dto.paymentMethod,
-          );
+          this.circuitBreaker.recordSuccess(selectedGateway as any, dto.paymentMethod);
         } else {
-          this.circuitBreaker.recordFailure(
-            selectedGateway as any,
-            dto.paymentMethod,
-          );
+          this.circuitBreaker.recordFailure(selectedGateway as any, dto.paymentMethod);
         }
       } catch (err) {
         // Gateway call failed — record failure and determine next state
@@ -215,15 +194,10 @@ export class TransactionsService {
           success: false,
         });
 
-        this.circuitBreaker.recordFailure(
-          selectedGateway as any,
-          dto.paymentMethod,
-        );
+        this.circuitBreaker.recordFailure(selectedGateway as any, dto.paymentMethod);
 
         const isTimeout = err instanceof GatewayTimeoutException;
-        const nextState = isTimeout
-          ? TransactionState.AUTH_TIMEOUT
-          : TransactionState.AUTH_FAILED;
+        const nextState = isTimeout ? TransactionState.AUTH_TIMEOUT : TransactionState.AUTH_FAILED;
 
         // Step 6a: Transition to failure state
         await this.stateMachine.transition(transaction.id, nextState, {
@@ -233,32 +207,22 @@ export class TransactionsService {
           metadata: { error: (err as Error).message, gateway: selectedGateway },
         });
 
-        await this.idempotencyService.markFailed(
-          dto.merchantId,
-          dto.idempotencyKey,
-        );
+        await this.idempotencyService.markFailed(dto.merchantId, dto.idempotencyKey);
 
         throw err;
       }
 
       // Step 6b: Transition to AUTHORISED or AUTH_FAILED based on response
       if (authResponse.status === 'declined') {
-        await this.stateMachine.transition(
-          transaction.id,
-          TransactionState.AUTH_FAILED,
-          {
-            event: 'GATEWAY_DECLINED',
-            triggeredBy: 'api_server',
-            traceId: dto.traceId,
-            gatewayReference: authResponse.gatewayReference,
-            gatewayResponse: authResponse.rawResponse,
-          },
-        );
+        await this.stateMachine.transition(transaction.id, TransactionState.AUTH_FAILED, {
+          event: 'GATEWAY_DECLINED',
+          triggeredBy: 'api_server',
+          traceId: dto.traceId,
+          gatewayReference: authResponse.gatewayReference,
+          gatewayResponse: authResponse.rawResponse,
+        });
 
-        await this.idempotencyService.markFailed(
-          dto.merchantId,
-          dto.idempotencyKey,
-        );
+        await this.idempotencyService.markFailed(dto.merchantId, dto.idempotencyKey);
 
         throw new Error(`Payment declined by gateway: ${selectedGateway}`);
       }
@@ -322,21 +286,15 @@ export class TransactionsService {
   // ----------------------------------------------------------------
   async capturePayment(dto: CapturePaymentDto): Promise<Transaction> {
     const transaction = await this.findOrThrow(dto.transactionId);
-    const captureAmount = dto.amountPaise
-      ? BigInt(dto.amountPaise)
-      : transaction.amountPaise;
+    const captureAmount = dto.amountPaise ? BigInt(dto.amountPaise) : transaction.amountPaise;
 
     // Transition to CAPTURE_INITIATED (lock released before gateway call)
-    await this.stateMachine.transition(
-      transaction.id,
-      TransactionState.CAPTURE_INITIATED,
-      {
-        event: 'CAPTURE_REQUESTED',
-        triggeredBy: dto.triggeredBy,
-        traceId: dto.traceId,
-        metadata: { amountPaise: captureAmount.toString() },
-      },
-    );
+    await this.stateMachine.transition(transaction.id, TransactionState.CAPTURE_INITIATED, {
+      event: 'CAPTURE_REQUESTED',
+      triggeredBy: dto.triggeredBy,
+      traceId: dto.traceId,
+      metadata: { amountPaise: captureAmount.toString() },
+    });
 
     const adapter = this.gatewayRegistry.get(transaction.gateway!);
 
@@ -352,47 +310,33 @@ export class TransactionsService {
       });
     } catch (err) {
       // Capture failed — move to CAPTURE_FAILED for retry (FS-04)
-      await this.stateMachine.transition(
-        transaction.id,
-        TransactionState.CAPTURE_FAILED,
-        {
-          event: 'CAPTURE_GATEWAY_ERROR',
-          triggeredBy: dto.triggeredBy,
-          traceId: dto.traceId,
-          metadata: { error: (err as Error).message },
-        },
-      );
+      await this.stateMachine.transition(transaction.id, TransactionState.CAPTURE_FAILED, {
+        event: 'CAPTURE_GATEWAY_ERROR',
+        triggeredBy: dto.triggeredBy,
+        traceId: dto.traceId,
+        metadata: { error: (err as Error).message },
+      });
 
       throw err;
     }
 
     // Determine if full or partial capture (FS-05)
-    const isPartial =
-      captureResponse.capturedAmountPaise < transaction.amountPaise;
+    const isPartial = captureResponse.capturedAmountPaise < transaction.amountPaise;
 
-    const nextState = isPartial
-      ? TransactionState.PARTIALLY_CAPTURED
-      : TransactionState.CAPTURED;
+    const nextState = isPartial ? TransactionState.PARTIALLY_CAPTURED : TransactionState.CAPTURED;
 
-    const captured = await this.stateMachine.transition(
-      transaction.id,
-      nextState,
-      {
-        event: 'CAPTURE_SUCCESS',
-        triggeredBy: dto.triggeredBy,
-        traceId: dto.traceId,
-        gatewayReference: captureResponse.gatewayReference,
-        gatewayResponse: captureResponse.rawResponse,
-      },
-    );
+    const captured = await this.stateMachine.transition(transaction.id, nextState, {
+      event: 'CAPTURE_SUCCESS',
+      triggeredBy: dto.triggeredBy,
+      traceId: dto.traceId,
+      gatewayReference: captureResponse.gatewayReference,
+      gatewayResponse: captureResponse.rawResponse,
+    });
 
     // Update captured amount
     await this.dataSource
       .getRepository(Transaction)
-      .update(
-        { id: transaction.id },
-        { capturedPaise: captureResponse.capturedAmountPaise },
-      );
+      .update({ id: transaction.id }, { capturedPaise: captureResponse.capturedAmountPaise });
 
     return captured;
   }
@@ -404,19 +348,15 @@ export class TransactionsService {
   async refundPayment(dto: RefundPaymentDto): Promise<Transaction> {
     const transaction = await this.findOrThrow(dto.transactionId);
 
-    await this.stateMachine.transition(
-      transaction.id,
-      TransactionState.REFUND_INITIATED,
-      {
-        event: 'REFUND_REQUESTED',
-        triggeredBy: dto.triggeredBy,
-        traceId: dto.traceId,
-        metadata: {
-          amountPaise: dto.amountPaise.toString(),
-          reason: dto.reason,
-        },
+    await this.stateMachine.transition(transaction.id, TransactionState.REFUND_INITIATED, {
+      event: 'REFUND_REQUESTED',
+      triggeredBy: dto.triggeredBy,
+      traceId: dto.traceId,
+      metadata: {
+        amountPaise: dto.amountPaise.toString(),
+        reason: dto.reason,
       },
-    );
+    });
 
     const adapter = this.gatewayRegistry.get(transaction.gateway!);
 
@@ -433,37 +373,27 @@ export class TransactionsService {
         traceId: dto.traceId,
       });
     } catch (err) {
-      await this.stateMachine.transition(
-        transaction.id,
-        TransactionState.REFUND_FAILED,
-        {
-          event: 'REFUND_GATEWAY_ERROR',
-          triggeredBy: dto.triggeredBy,
-          traceId: dto.traceId,
-          metadata: { error: (err as Error).message },
-        },
-      );
+      await this.stateMachine.transition(transaction.id, TransactionState.REFUND_FAILED, {
+        event: 'REFUND_GATEWAY_ERROR',
+        triggeredBy: dto.triggeredBy,
+        traceId: dto.traceId,
+        metadata: { error: (err as Error).message },
+      });
 
       throw err;
     }
 
     const isPartial = refundResponse.status === 'partially_refunded';
 
-    const nextState = isPartial
-      ? TransactionState.PARTIALLY_REFUNDED
-      : TransactionState.REFUNDED;
+    const nextState = isPartial ? TransactionState.PARTIALLY_REFUNDED : TransactionState.REFUNDED;
 
-    const refunded = await this.stateMachine.transition(
-      transaction.id,
-      nextState,
-      {
-        event: 'REFUND_SUCCESS',
-        triggeredBy: dto.triggeredBy,
-        traceId: dto.traceId,
-        gatewayReference: refundResponse.gatewayRefundId,
-        gatewayResponse: refundResponse.rawResponse,
-      },
-    );
+    const refunded = await this.stateMachine.transition(transaction.id, nextState, {
+      event: 'REFUND_SUCCESS',
+      triggeredBy: dto.triggeredBy,
+      traceId: dto.traceId,
+      gatewayReference: refundResponse.gatewayRefundId,
+      gatewayResponse: refundResponse.rawResponse,
+    });
 
     // Update refunded amount
     await this.dataSource
@@ -482,15 +412,11 @@ export class TransactionsService {
   async voidPayment(dto: VoidPaymentDto): Promise<Transaction> {
     const transaction = await this.findOrThrow(dto.transactionId);
 
-    await this.stateMachine.transition(
-      transaction.id,
-      TransactionState.VOID_INITIATED,
-      {
-        event: 'VOID_REQUESTED',
-        triggeredBy: dto.triggeredBy,
-        traceId: dto.traceId,
-      },
-    );
+    await this.stateMachine.transition(transaction.id, TransactionState.VOID_INITIATED, {
+      event: 'VOID_REQUESTED',
+      triggeredBy: dto.triggeredBy,
+      traceId: dto.traceId,
+    });
 
     const adapter = this.gatewayRegistry.get(transaction.gateway!);
 
@@ -502,29 +428,21 @@ export class TransactionsService {
       });
     } catch (err) {
       // Void failed — can retry capture
-      await this.stateMachine.transition(
-        transaction.id,
-        TransactionState.CAPTURE_INITIATED,
-        {
-          event: 'VOID_FAILED_RETRY_CAPTURE',
-          triggeredBy: dto.triggeredBy,
-          traceId: dto.traceId,
-          metadata: { error: (err as Error).message },
-        },
-      );
+      await this.stateMachine.transition(transaction.id, TransactionState.CAPTURE_INITIATED, {
+        event: 'VOID_FAILED_RETRY_CAPTURE',
+        triggeredBy: dto.triggeredBy,
+        traceId: dto.traceId,
+        metadata: { error: (err as Error).message },
+      });
 
       throw err;
     }
 
-    return this.stateMachine.transition(
-      transaction.id,
-      TransactionState.VOIDED,
-      {
-        event: 'VOID_SUCCESS',
-        triggeredBy: dto.triggeredBy,
-        traceId: dto.traceId,
-      },
-    );
+    return this.stateMachine.transition(transaction.id, TransactionState.VOIDED, {
+      event: 'VOID_SUCCESS',
+      triggeredBy: dto.triggeredBy,
+      traceId: dto.traceId,
+    });
   }
 
   // ----------------------------------------------------------------
@@ -545,19 +463,14 @@ export class TransactionsService {
   // ----------------------------------------------------------------
   // GET /api/v1/payments?merchant_order_id=
   // ----------------------------------------------------------------
-  async findByMerchantOrderId(
-    merchantId: string,
-    merchantOrderId: string,
-  ): Promise<Transaction> {
+  async findByMerchantOrderId(merchantId: string, merchantOrderId: string): Promise<Transaction> {
     const transaction = await this.transactionRepo.findByMerchantOrderId(
       merchantId,
       merchantOrderId,
     );
 
     if (!transaction) {
-      throw new NotFoundException(
-        `Transaction not found for order ${merchantOrderId}`,
-      );
+      throw new NotFoundException(`Transaction not found for order ${merchantOrderId}`);
     }
 
     return transaction;

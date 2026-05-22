@@ -57,19 +57,14 @@ export class GatewayHealthService {
     for (const [key, samples] of this.buffer.entries()) {
       if (samples.length === 0) continue;
 
-      const [gateway, paymentMethod] = key.split(':') as [
-        PaymentGateway,
-        PaymentMethod,
-      ];
+      const [gateway, paymentMethod] = key.split(':') as [PaymentGateway, PaymentMethod];
 
       const successCount = samples.filter((s) => s.success).length;
       const latencies = samples.map((s) => s.latencyMs).sort((a, b) => a - b);
 
       const p95Index = Math.floor(latencies.length * 0.95);
       const p95LatencyMs = latencies[p95Index] ?? latencies.at(-1) ?? 0;
-      const avgLatencyMs = Math.round(
-        latencies.reduce((sum, l) => sum + l, 0) / latencies.length,
-      );
+      const avgLatencyMs = Math.round(latencies.reduce((sum, l) => sum + l, 0) / latencies.length);
 
       entries.push({
         gateway,
@@ -95,9 +90,7 @@ export class GatewayHealthService {
   // Returns aggregated metrics across the last N minutes.
   // Satisfies Section A3.1 — per-minute sliding window.
   // ----------------------------------------------------------------
-  async getSlidingWindowMetrics(
-    windowMinutes: number,
-  ): Promise<SlidingWindowMetrics[]> {
+  async getSlidingWindowMetrics(windowMinutes: number): Promise<SlidingWindowMetrics[]> {
     const since = new Date(Date.now() - windowMinutes * 60 * 1000);
 
     const rows = await this.dataSource
@@ -114,9 +107,7 @@ export class GatewayHealthService {
     return rows.map((row) => ({
       gateway: row.gateway as PaymentGateway,
       successRate:
-        row.totalCount > 0
-          ? parseFloat(row.totalSuccess) / parseFloat(row.totalCount)
-          : 0,
+        row.totalCount > 0 ? parseFloat(row.totalSuccess) / parseFloat(row.totalCount) : 0,
       p95LatencyMs: parseInt(row.p95LatencyMs, 10) || 0,
       totalCount: parseInt(row.totalCount, 10) || 0,
     }));

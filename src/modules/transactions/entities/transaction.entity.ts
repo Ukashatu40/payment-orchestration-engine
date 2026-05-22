@@ -2,11 +2,7 @@
 
 import { Entity, Column, Index, OneToMany, VersionColumn } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
-import {
-  TransactionState,
-  PaymentGateway,
-  PaymentMethod,
-} from '../../../common/enums';
+import { TransactionState, PaymentGateway, PaymentMethod } from '../../../common/enums';
 
 @Entity('transactions')
 @Index(['merchantId', 'idempotencyKey'], { unique: true })

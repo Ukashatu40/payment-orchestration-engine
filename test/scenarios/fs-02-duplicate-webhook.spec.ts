@@ -2,16 +2,9 @@
 
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import * as crypto from 'crypto';
-import {
-  buildApp,
-  closeApp,
-  getDataSource,
-} from '../integration/helpers/app.helper';
+import { buildApp, closeApp, getDataSource } from '../integration/helpers/app.helper';
 import { cleanDatabase } from '../integration/helpers/db-cleaner.helper';
-import {
-  initiatePayment,
-  makeHeaders,
-} from '../integration/helpers/request.helper';
+import { initiatePayment, makeHeaders } from '../integration/helpers/request.helper';
 import { v4 as uuidv4 } from 'uuid';
 import { WebhookProcessorService } from '../../src/modules/webhooks/webhook-processor.service';
 import { WebhookQueueService } from '../../src/modules/webhooks/webhook-queue.service';
@@ -39,10 +32,7 @@ describe('FS-02: Duplicate Webhook Delivery', () => {
     const body = JSON.stringify(payload);
     const secret = 'mock-webhook-secret';
     const ts = Math.floor(Date.now() / 1000).toString();
-    const sig = crypto
-      .createHmac('sha256', secret)
-      .update(`${ts}.${body}`)
-      .digest('hex');
+    const sig = crypto.createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex');
 
     const headers = {
       ...makeHeaders(),
