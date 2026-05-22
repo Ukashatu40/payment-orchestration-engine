@@ -1,0 +1,499 @@
+openapi: 3.0.0
+paths:
+  /health:
+    get:
+      operationId: AppController_health
+      parameters: []
+      responses:
+        '200':
+          description: Health check passed
+      security:
+        - X-API-Key: []
+      summary: Check application health
+      tags:
+        - health
+  /gateways:
+    get:
+      operationId: GatewaysController_listGateways
+      parameters: []
+      responses:
+        '200':
+          description: List of payment gateways retrieved
+      security: &ref_0
+        - X-API-Key: []
+      summary: List all payment gateways
+      tags: &ref_1
+        - gateways
+  /gateways/{name}/health:
+    get:
+      operationId: GatewaysController_getGatewayHealth
+      parameters:
+        - name: name
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Health status retrieved
+      security: *ref_0
+      summary: Get health status of a payment gateway
+      tags: *ref_1
+  /gateways/{name}/metrics:
+    get:
+      operationId: GatewaysController_getGatewayMetrics
+      parameters:
+        - name: name
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Metrics retrieved
+      security: *ref_0
+      summary: Get metrics for a payment gateway
+      tags: *ref_1
+  /gateways/{name}/config:
+    put:
+      operationId: GatewaysController_updateGatewayConfig
+      parameters:
+        - name: name
+          required: true
+          in: path
+          description: Payment gateway name
+          schema:
+            enum:
+              - RAZORPAY
+              - STRIPE
+              - PAYU
+              - UPI
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isEnabled:
+                  type: boolean
+                cbFailureThreshold:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+              example:
+                isEnabled: true
+                cbFailureThreshold: 0.3
+      responses:
+        '200':
+          description: Configuration updated
+      security: *ref_0
+      summary: Update configuration for a payment gateway
+      tags: *ref_1
+  /gateways/routing/config:
+    get:
+      operationId: GatewaysController_getRoutingConfig
+      parameters: []
+      responses:
+        '200':
+          description: Routing configuration retrieved
+      security: *ref_0
+      summary: Get current routing configuration
+      tags: *ref_1
+    put:
+      operationId: GatewaysController_updateRoutingConfig
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                weightSuccessRate:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                weightLatency:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                weightCost:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                weightHealth:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                weightFit:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+              example:
+                weightSuccessRate: 0.4
+                weightLatency: 0.2
+                weightCost: 0.2
+                weightHealth: 0.1
+                weightFit: 0.1
+      responses:
+        '200':
+          description: Routing configuration updated
+      security: *ref_0
+      summary: Update routing configuration
+      tags: *ref_1
+  /payments:
+    post:
+      operationId: TransactionsController_initiatePayment
+      parameters:
+        - name: x-merchant-id
+          required: true
+          in: header
+          description: Merchant UUID
+          schema:
+            type: string
+        - name: idempotency-key
+          required: true
+          in: header
+          description: UUID v4 idempotency key
+          schema:
+            type: string
+        - name: x-mock-response
+          required: true
+          in: header
+          schema:
+            type: string
+        - name: x-mock-delay-ms
+          required: true
+          in: header
+          schema:
+            type: string
+        - name: x-mock-gateway-down
+          required: true
+          in: header
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiatePaymentRequestDto'
+      responses:
+        '201':
+          description: Payment initiated successfully
+        '400':
+          description: Validation error
+        '401':
+          description: Invalid or missing API key
+        '409':
+          description: Idempotency conflict — request in progress
+        '503':
+          description: No gateway available
+      summary: Initiate a new payment
+      tags: &ref_2
+        - Transactions
+    get:
+      operationId: TransactionsController_getByMerchantOrderId
+      parameters:
+        - name: merchant_order_id
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: x-merchant-id
+          required: true
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      tags: *ref_2
+  /payments/{id}:
+    get:
+      operationId: TransactionsController_getPayment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment found
+        '404':
+          description: Payment not found
+      summary: Retrieve payment details by ID
+      tags: *ref_2
+  /payments/{id}/capture:
+    post:
+      operationId: TransactionsController_capturePayment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: x-merchant-id
+          required: true
+          in: header
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapturePaymentRequestDto'
+      responses:
+        '200':
+          description: Payment captured
+        '422':
+          description: Invalid state transition
+      summary: Capture an authorised payment
+      tags: *ref_2
+  /payments/{id}/void:
+    post:
+      operationId: TransactionsController_voidPayment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: x-merchant-id
+          required: true
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Payment voided
+        '422':
+          description: Invalid state transition
+      summary: Void an authorised payment
+      tags: *ref_2
+  /payments/{id}/refund:
+    post:
+      operationId: TransactionsController_refundPayment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: x-merchant-id
+          required: true
+          in: header
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundPaymentRequestDto'
+      responses:
+        '200':
+          description: Payment refunded
+        '422':
+          description: Invalid state transition
+      summary: Refund a completed payment
+      tags: *ref_2
+  /payments/{id}/timeline:
+    get:
+      operationId: TransactionsController_getTimeline
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Timeline retrieved
+        '404':
+          description: Payment not found
+      summary: Retrieve payment timeline
+      tags: *ref_2
+  /payments/{id}/refunds:
+    get:
+      operationId: TransactionsController_getRefunds
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Refunds retrieved
+        '404':
+          description: Payment not found
+      summary: Retrieve payment refunds
+      tags: *ref_2
+  /payments/analytics/success-rate:
+    get:
+      operationId: TransactionsController_getSuccessRate
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags: *ref_2
+  /payments/analytics/volume:
+    get:
+      operationId: TransactionsController_getVolume
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags: *ref_2
+  /webhooks/razorpay:
+    post:
+      operationId: WebhooksController_razorpayWebhook
+      parameters: []
+      responses:
+        '200':
+          description: Webhook received
+      security: &ref_3
+        - X-API-Key: []
+      summary: Handle Razorpay webhook
+      tags: &ref_4
+        - webhooks
+  /webhooks/stripe:
+    post:
+      operationId: WebhooksController_stripeWebhook
+      parameters: []
+      responses:
+        '200':
+          description: Webhook received
+      security: *ref_3
+      summary: Handle Stripe webhook
+      tags: *ref_4
+  /webhooks/payu:
+    post:
+      operationId: WebhooksController_payuWebhook
+      parameters: []
+      responses:
+        '200':
+          description: Webhook received
+      security: *ref_3
+      summary: Handle PayU webhook
+      tags: *ref_4
+  /webhooks/upi:
+    post:
+      operationId: WebhooksController_upiWebhook
+      parameters: []
+      responses:
+        '200':
+          description: Webhook received
+      security: *ref_3
+      summary: Handle UPI webhook
+      tags: *ref_4
+  /webhooks/dlq:
+    get:
+      operationId: WebhooksController_getDLQ
+      parameters:
+        - name: gateway
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Failed webhooks retrieved
+      security: *ref_3
+      summary: Retrieve failed webhooks
+      tags: *ref_4
+  /webhooks/dlq/{id}/replay:
+    post:
+      operationId: WebhooksController_replayDLQ
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Webhook replayed
+      security: *ref_3
+      summary: Replay a failed webhook
+      tags: *ref_4
+  /reconciliation/trigger:
+    post:
+      operationId: ReconciliationController_triggerReconciliation
+      parameters: []
+      responses:
+        '200':
+          description: Reconciliation triggered
+      security: &ref_5
+        - X-API-Key: []
+      summary: Trigger reconciliation process
+      tags: &ref_6
+        - reconciliation
+  /reconciliation/reports/{runId}:
+    get:
+      operationId: ReconciliationController_getReport
+      parameters:
+        - name: runId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Report retrieved
+      security: *ref_5
+      summary: Get reconciliation report
+      tags: *ref_6
+  /reconciliation/anomalies:
+    get:
+      operationId: ReconciliationController_getAnomalies
+      parameters: []
+      responses:
+        '200':
+          description: Anomalies retrieved
+      security: *ref_5
+      summary: Get unresolved anomalies
+      tags: *ref_6
+info:
+  title: PayFlow Orchestration Layer
+  description: >-
+    Production-grade payment orchestration API routing transactions across
+    Razorpay, Stripe, PayU, and UPI with intelligent failover, idempotency, and
+    complete audit trails.
+  version: 1.0.0
+  contact: {}
+tags:
+  - name: payments
+    description: Payment initiation, capture, void, refund
+  - name: webhooks
+    description: Gateway webhook receivers and DLQ management
+  - name: gateways
+    description: Gateway health, metrics, and configuration
+  - name: reconciliation
+    description: Batch reconciliation and anomaly detection
+  - name: analytics
+    description: Transaction volume and success rate analytics
+  - name: health
+    description: System health check
+servers: []
+components:
+  securitySchemes:
+    X-API-Key:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    InitiatePaymentRequestDto:
+      type: object
+      properties: {}
+    CapturePaymentRequestDto:
+      type: object
+      properties: {}
+    RefundPaymentRequestDto:
+      type: object
+      properties: {}

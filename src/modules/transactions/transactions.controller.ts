@@ -7,6 +7,8 @@ import {
   ApiHeader,
   ApiBearerAuth,
   ApiSecurity,
+  ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import {
   Controller,
@@ -120,6 +122,18 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Capture an authorised payment' })
   @ApiResponse({ status: 200, description: 'Payment captured' })
   @ApiResponse({ status: 422, description: 'Invalid state transition' })
+  @ApiBody({
+    description: 'Optional amount to capture (for partial captures)',
+    schema: {
+      type: 'object',
+      properties: {
+        amountPaise: { type: 'integer', minimum: 1 },
+      },
+      example: {
+        amountPaise: 5000,
+      },
+    },
+  })
   async capturePayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CapturePaymentRequestDto,
@@ -162,6 +176,23 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Refund a completed payment' })
   @ApiResponse({ status: 200, description: 'Payment refunded' })
   @ApiResponse({ status: 422, description: 'Invalid state transition' })
+  @ApiBody({
+    description: 'Refund amount and reason',
+    schema: {
+      type: 'object',
+      properties: {
+        amountPaise: { type: 'integer', minimum: 1 },
+        reason: { type: 'string' },
+        idempotencyKey: { type: 'string', format: 'uuid' },
+      },
+      required: ['amountPaise', 'idempotencyKey'],
+      example: {
+        amountPaise: 5000,
+        reason: 'Customer requested refund',
+        idempotencyKey: '123e4567-e89b-12d3-a456-426614174000',
+      },
+    },
+  })
   async refundPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RefundPaymentRequestDto,
@@ -201,6 +232,18 @@ export class TransactionsController {
 
   // GET /api/v1/analytics/success-rate
   @Get('analytics/success-rate')
+  @ApiOperation({ summary: 'Get payment success rate analytics' })
+  @ApiResponse({ status: 200, description: 'Success rate analytics retrieved' })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    description: 'Start date for analytics (ISO 8601 format)',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    description: 'End date for analytics (ISO 8601 format)',
+  })
   async getSuccessRate(@Query() query: AnalyticsQueryDto) {
     const from = query.from ? new Date(query.from) : new Date(Date.now() - 86_400_000);
     const to = query.to ? new Date(query.to) : new Date();
@@ -209,6 +252,18 @@ export class TransactionsController {
 
   // GET /api/v1/analytics/volume
   @Get('analytics/volume')
+  @ApiOperation({ summary: 'Get payment volume analytics' })
+  @ApiResponse({ status: 200, description: 'Volume analytics retrieved' })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    description: 'Start date for analytics (ISO 8601 format)',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    description: 'End date for analytics (ISO 8601 format)',
+  })
   async getVolume(@Query() query: AnalyticsQueryDto) {
     const from = query.from ? new Date(query.from) : new Date(Date.now() - 86_400_000);
     const to = query.to ? new Date(query.to) : new Date();
