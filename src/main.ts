@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as yaml from 'js-yaml';
 
 async function bootstrap() {
@@ -96,8 +97,13 @@ async function bootstrap() {
   });
 
   // Also export as YAML to docs/api-specification.yaml
+  const docsDir = path.join(process.cwd(), 'docs');
+  if (!fs.existsSync(docsDir)) {
+    fs.mkdirSync(docsDir, { recursive: true });
+  }
+
   const yamlDocument = yaml.dump(document);
-  fs.writeFileSync('docs/api-specification.yaml', yamlDocument, 'utf8');
+  fs.writeFileSync(path.join(docsDir, 'api-specification.yaml'), yamlDocument, 'utf8');
 
   // API versioning — /api/v1/...
   app.setGlobalPrefix('api');
