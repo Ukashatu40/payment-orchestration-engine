@@ -3,8 +3,8 @@
 # Architecture Document
 
 **Version:** 1.0  
-**Date:** [Day 1]  
-**Author:** [Your Name]  
+**Date:** 13th May, 2026  
+**Author:** Ukashatu Abdullahi  
 **Status:** Living Document (updated through Day 15)
 
 ---
