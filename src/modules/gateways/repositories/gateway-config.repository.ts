@@ -21,13 +21,15 @@ export class GatewayConfigRepository {
     return this.repo.findOne({ where: { gateway } });
   }
 
-  async findEnabledForMethod(paymentMethod: PaymentMethod): Promise<GatewayConfig[]> {
+  async findEnabledForMethodAndCurrency(
+    paymentMethod: PaymentMethod,
+    currency: string,
+  ): Promise<GatewayConfig[]> {
     return this.repo
       .createQueryBuilder('gc')
       .where('gc.is_enabled = TRUE')
-      .andWhere(`gc.supported_methods::text LIKE :pattern`, {
-        pattern: `%${paymentMethod}%`,
-      })
+      .andWhere(':method = ANY(gc.supported_methods)', { method: paymentMethod })
+      .andWhere(':currency = ANY(gc.supported_currencies)', { currency })
       .getMany();
   }
 

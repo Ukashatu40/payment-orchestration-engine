@@ -19,6 +19,7 @@ const mockGatewayConfigs = [
     gateway: PaymentGateway.RAZORPAY,
     isEnabled: true,
     supportedMethods: [PaymentMethod.CARD_CREDIT, PaymentMethod.CARD_DEBIT],
+    supportedCurrencies: ['INR'],
     costPercentage: 0.02,
     costFixedPaise: BigInt(200),
     cbFailureThreshold: 5,
@@ -29,6 +30,7 @@ const mockGatewayConfigs = [
     gateway: PaymentGateway.STRIPE,
     isEnabled: true,
     supportedMethods: [PaymentMethod.CARD_CREDIT, PaymentMethod.CARD_DEBIT],
+    supportedCurrencies: ['USD', 'INR'],
     costPercentage: 0.025,
     costFixedPaise: BigInt(300),
     cbFailureThreshold: 5,
@@ -39,6 +41,7 @@ const mockGatewayConfigs = [
     gateway: PaymentGateway.UPI,
     isEnabled: true,
     supportedMethods: [PaymentMethod.UPI],
+    supportedCurrencies: ['INR'],
     costPercentage: 0.0,
     costFixedPaise: BigInt(0),
     cbFailureThreshold: 5,
@@ -77,7 +80,7 @@ const mockRoutingConfig = {
 // Mocks
 // ----------------------------------------------------------------
 const mockGatewayConfigRepo = {
-  findEnabledForMethod: jest.fn(),
+  findEnabledForMethodAndCurrency: jest.fn(),
   findAll: jest.fn().mockResolvedValue(mockGatewayConfigs),
 };
 
@@ -104,7 +107,7 @@ describe('GatewayRouterService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
 
-    mockGatewayConfigRepo.findEnabledForMethod.mockResolvedValue(
+    mockGatewayConfigRepo.findEnabledForMethodAndCurrency.mockResolvedValue(
       mockGatewayConfigs.filter((c) => c.supportedMethods.includes(PaymentMethod.CARD_CREDIT)),
     );
 
@@ -134,6 +137,7 @@ describe('GatewayRouterService', () => {
       const selected = await service.selectGateway(
         'txn-123',
         PaymentMethod.CARD_CREDIT,
+        'INR',
         'trace-123',
       );
 
@@ -141,15 +145,26 @@ describe('GatewayRouterService', () => {
     });
 
     it('should throw NoGatewayAvailableException when no gateways support method', async () => {
-      mockGatewayConfigRepo.findEnabledForMethod.mockResolvedValue([]);
+      mockGatewayConfigRepo.findEnabledForMethodAndCurrency.mockResolvedValue([]);
 
       await expect(
-        service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'trace-123'),
+        service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'INR', 'trace-123'),
+      ).rejects.toThrow(NoGatewayAvailableException);
+    });
+
+    it('should throw NoGatewayAvailableException when no gateways support the currency', async () => {
+      // Simulates an NGN transaction when only INR/USD gateways are
+      // enabled — the repository call itself filters by currency, so
+      // an empty result here models "no gateway supports NGN".
+      mockGatewayConfigRepo.findEnabledForMethodAndCurrency.mockResolvedValue([]);
+
+      await expect(
+        service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'NGN', 'trace-123'),
       ).rejects.toThrow(NoGatewayAvailableException);
     });
 
     it('should record routing decision for all scored gateways', async () => {
-      await service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'trace-123');
+      await service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'INR', 'trace-123');
 
       const repoMock = mockDataSource.getRepository();
       expect(repoMock.save).toHaveBeenCalledTimes(1);
@@ -166,7 +181,7 @@ describe('GatewayRouterService', () => {
     });
 
     it('should select only UPI when payment method is UPI', async () => {
-      mockGatewayConfigRepo.findEnabledForMethod.mockResolvedValue(
+      mockGatewayConfigRepo.findEnabledForMethodAndCurrency.mockResolvedValue(
         mockGatewayConfigs.filter((c) => c.supportedMethods.includes(PaymentMethod.UPI)),
       );
       mockHealthService.getSlidingWindowMetrics.mockResolvedValue([
@@ -178,7 +193,12 @@ describe('GatewayRouterService', () => {
         },
       ]);
 
-      const selected = await service.selectGateway('txn-123', PaymentMethod.UPI, 'trace-123');
+      const selected = await service.selectGateway(
+        'txn-123',
+        PaymentMethod.UPI,
+        'INR',
+        'trace-123',
+      );
 
       expect(selected).toBe(PaymentGateway.UPI);
     });
@@ -201,6 +221,7 @@ describe('GatewayRouterService', () => {
       const selected = await service.selectGateway(
         'txn-123',
         PaymentMethod.CARD_CREDIT,
+        'INR',
         'trace-123',
       );
 
@@ -230,12 +251,12 @@ describe('GatewayRouterService', () => {
       ]);
 
       await expect(
-        service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'trace-123'),
+        service.selectGateway('txn-123', PaymentMethod.CARD_CREDIT, 'INR', 'trace-123'),
       ).resolves.not.toThrow();
     });
 
     it('should not throw when only one gateway is available', async () => {
-      mockGatewayConfigRepo.findEnabledForMethod.mockResolvedValue([
+      mockGatewayConfigRepo.findEnabledForMethodAndCurrency.mockResolvedValue([
         mockGatewayConfigs[0], // only Razorpay
       ]);
       mockHealthService.getSlidingWindowMetrics.mockResolvedValue([
@@ -250,6 +271,7 @@ describe('GatewayRouterService', () => {
       const selected = await service.selectGateway(
         'txn-123',
         PaymentMethod.CARD_CREDIT,
+        'INR',
         'trace-123',
       );
 

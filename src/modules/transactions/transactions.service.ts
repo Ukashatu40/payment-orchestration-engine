@@ -107,6 +107,7 @@ export class TransactionsService {
         selectedGateway = await this.gatewayRouter.selectGateway(
           transaction.id,
           dto.paymentMethod,
+          dto.currency,
           dto.traceId,
         );
       } catch (err) {
@@ -149,12 +150,15 @@ export class TransactionsService {
         },
       );
 
-      // Update gateway on transaction for reconciliation engine
-      (await this.transactionRepo['repo']?.update)
-        ? this.dataSource
-            .getRepository(Transaction)
-            .update({ id: transaction.id }, { gateway: selectedGateway as any })
-        : null;
+      // Update gateway on transaction for reconciliation engine.
+      // Must be awaited — an unawaited fire-and-forget update here
+      // races with the very next read of this row (surfaced by the
+      // 'pending' branch below, which re-fetches the transaction
+      // almost immediately after this write with no gateway-call
+      // delay in between to mask the race).
+      await this.dataSource
+        .getRepository(Transaction)
+        .update({ id: transaction.id }, { gateway: selectedGateway as any });
 
       // Step 5: Call gateway — no DB lock held during this I/O
       const adapter = this.gatewayRegistry.get(selectedGateway as any);
@@ -174,16 +178,23 @@ export class TransactionsService {
           metadata: dto.metadata,
         });
 
+        // 'pending' (redirect/async gateways like Paystack/Flutterwave,
+        // which don't resolve synchronously) counts as a successful
+        // gateway call for health/circuit-breaker purposes — the HTTP
+        // call succeeded, final settlement just hasn't arrived yet.
+        const gatewayCallSucceeded =
+          authResponse.status === 'authorised' || authResponse.status === 'pending';
+
         // Record latency sample for routing algorithm
         this.healthService.record({
           gateway: selectedGateway as any,
           paymentMethod: dto.paymentMethod,
           latencyMs: Date.now() - gatewayStart,
-          success: authResponse.status === 'authorised',
+          success: gatewayCallSucceeded,
         });
 
         // Record circuit breaker result
-        if (authResponse.status === 'authorised') {
+        if (gatewayCallSucceeded) {
           this.circuitBreaker.recordSuccess(selectedGateway as any, dto.paymentMethod);
         } else {
           this.circuitBreaker.recordFailure(selectedGateway as any, dto.paymentMethod);
@@ -228,6 +239,38 @@ export class TransactionsService {
         await this.idempotencyService.markFailed(dto.merchantId, dto.idempotencyKey);
 
         throw new Error(`Payment declined by gateway: ${selectedGateway}`);
+      }
+
+      // Redirect/async gateways (Paystack, Flutterwave) return 'pending'
+      // from authorise() — there is no synchronous result yet. The
+      // transaction stays in AUTH_INITIATED; the webhook processor
+      // advances it to AUTHORISED/CAPTURED once the gateway confirms
+      // the charge (see webhook-processor.service.ts resolveTransition).
+      if (authResponse.status === 'pending') {
+        await this.dataSource.getRepository(Transaction).update(
+          { id: transaction.id },
+          {
+            gatewayPaymentId: authResponse.gatewayPaymentId,
+            gatewayOrderId: authResponse.gatewayOrderId ?? null,
+            gatewayReference: authResponse.gatewayReference,
+          },
+        );
+
+        await this.idempotencyService.markCompleted(
+          dto.merchantId,
+          dto.idempotencyKey,
+          202,
+          { transactionId: transaction.id, state: TransactionState.AUTH_INITIATED },
+          transaction.id,
+        );
+
+        this.logger.log('Payment initiation pending — awaiting webhook confirmation', {
+          transactionId: transaction.id,
+          gateway: selectedGateway,
+          traceId: dto.traceId,
+        });
+
+        return this.findOrThrow(transaction.id);
       }
 
       // Success path

@@ -33,6 +33,7 @@ export class GatewayRouterService {
   async selectGateway(
     transactionId: string,
     paymentMethod: PaymentMethod,
+    currency: string,
     traceId: string,
   ): Promise<PaymentGateway> {
     // Step 1: Load routing weights from DB (not hardcoded — Section A3.1)
@@ -43,8 +44,13 @@ export class GatewayRouterService {
 
     const metricsMap = new Map(metrics.map((m) => [m.gateway, m]));
 
-    // Step 3: Load cost config for all gateways
-    const enabledConfigs = await this.gatewayConfigRepo.findEnabledForMethod(paymentMethod);
+    // Step 3: Load cost config for all gateways enabled for this
+    // payment method AND currency (e.g. an NGN transaction only
+    // considers gateways whose supported_currencies includes NGN)
+    const enabledConfigs = await this.gatewayConfigRepo.findEnabledForMethodAndCurrency(
+      paymentMethod,
+      currency,
+    );
 
     if (enabledConfigs.length === 0) {
       throw new NoGatewayAvailableException(paymentMethod);
