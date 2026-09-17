@@ -80,10 +80,11 @@ describe('OpayAdapter', () => {
       expect(capturedHeaders['merchantid']).toBe('merchant-id-xxx');
     });
 
-    it('sends amount as kobo, no conversion', async () => {
-      let capturedBody:
-        | { amount: { total: number }; metadata: { transaction_id: string } }
-        | undefined;
+    it('sends amount as kobo, no conversion, and uses transactionId as the reference', async () => {
+      // Opay's confirmed callback payload has no metadata passthrough
+      // field, only `reference` — so our transactionId must be sent
+      // as the reference itself for the webhook to resolve it back.
+      let capturedBody: { amount: { total: number }; reference: string } | undefined;
       nock(BASE_URL)
         .post('/api/v1/cashier/create', (body: typeof capturedBody) => {
           capturedBody = body;
@@ -94,7 +95,7 @@ describe('OpayAdapter', () => {
       await adapter.authorise(baseAuthRequest);
 
       expect(capturedBody?.amount.total).toBe(500000);
-      expect(capturedBody?.metadata.transaction_id).toBe('txn-1');
+      expect(capturedBody?.reference).toBe('txn-1');
     });
 
     it('maps a timeout to GatewayTimeoutException', async () => {

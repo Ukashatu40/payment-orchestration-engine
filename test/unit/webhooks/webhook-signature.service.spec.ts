@@ -123,4 +123,205 @@ describe('WebhookSignatureService', () => {
       ).toThrow(WebhookSignatureInvalidException);
     });
   });
+
+  // ----------------------------------------------------------------
+  // Paystack — HMAC-SHA512
+  // ----------------------------------------------------------------
+  describe('Paystack verification', () => {
+    it('should pass with a valid SHA-512 signature', () => {
+      const sig = makeHmac(RAW_BODY, 'sha512');
+      expect(() =>
+        service.verify(PaymentGateway.PAYSTACK, RAW_BODY, { 'x-paystack-signature': sig }, SECRET),
+      ).not.toThrow();
+    });
+
+    it('should reject a SHA-256 signature (wrong algorithm)', () => {
+      const sig = makeHmac(RAW_BODY, 'sha256');
+      expect(() =>
+        service.verify(PaymentGateway.PAYSTACK, RAW_BODY, { 'x-paystack-signature': sig }, SECRET),
+      ).toThrow(WebhookSignatureInvalidException);
+    });
+
+    it('should throw on missing header', () => {
+      expect(() => service.verify(PaymentGateway.PAYSTACK, RAW_BODY, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Flutterwave — direct pre-shared secret comparison via verif-hash,
+  // NOT an HMAC over the body.
+  // ----------------------------------------------------------------
+  describe('Flutterwave verification', () => {
+    it('should pass when verif-hash matches the configured secret exactly', () => {
+      expect(() =>
+        service.verify(PaymentGateway.FLUTTERWAVE, RAW_BODY, { 'verif-hash': SECRET }, SECRET),
+      ).not.toThrow();
+    });
+
+    it('should reject a mismatched verif-hash', () => {
+      expect(() =>
+        service.verify(
+          PaymentGateway.FLUTTERWAVE,
+          RAW_BODY,
+          { 'verif-hash': 'wrong-secret' },
+          SECRET,
+        ),
+      ).toThrow(WebhookSignatureInvalidException);
+    });
+
+    it('should reject an HMAC of the body (confirming it is NOT the scheme used)', () => {
+      // If this were mistakenly implemented as an HMAC like the other
+      // gateways, hashing the body with the secret would pass — it
+      // must not, since Flutterwave sends back the raw shared secret.
+      const wouldBeHmac = makeHmac(RAW_BODY, 'sha256');
+      expect(() =>
+        service.verify(PaymentGateway.FLUTTERWAVE, RAW_BODY, { 'verif-hash': wouldBeHmac }, SECRET),
+      ).toThrow(WebhookSignatureInvalidException);
+    });
+
+    it('should throw on missing header', () => {
+      expect(() => service.verify(PaymentGateway.FLUTTERWAVE, RAW_BODY, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Interswitch — HMAC-SHA512 of the raw body, header X-Interswitch-Signature
+  // Source: https://docs.interswitchgroup.com/v1.1/docs/webhooks
+  // ----------------------------------------------------------------
+  describe('Interswitch verification', () => {
+    it('should pass with a valid SHA-512 signature', () => {
+      const sig = makeHmac(RAW_BODY, 'sha512');
+      expect(() =>
+        service.verify(
+          PaymentGateway.INTERSWITCH,
+          RAW_BODY,
+          { 'x-interswitch-signature': sig },
+          SECRET,
+        ),
+      ).not.toThrow();
+    });
+
+    it('should reject an invalid signature', () => {
+      expect(() =>
+        service.verify(
+          PaymentGateway.INTERSWITCH,
+          RAW_BODY,
+          { 'x-interswitch-signature': 'deadbeef' },
+          SECRET,
+        ),
+      ).toThrow(WebhookSignatureInvalidException);
+    });
+
+    it('should throw on missing header', () => {
+      expect(() => service.verify(PaymentGateway.INTERSWITCH, RAW_BODY, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Opay — signature travels as a body field (`sha512`), computed as
+  // HMAC-SHA3-512 over a formatted string built from named fields of
+  // the nested `payload` object, not the raw body.
+  // Source: https://doc.opaycheckout.com/callback-signature
+  // ----------------------------------------------------------------
+  describe('Opay verification', () => {
+    const opayPayload = {
+      amount: '30000',
+      currency: 'NGN',
+      reference: 'txn-abc-123',
+      refunded: false,
+      status: 'SUCCESS',
+      timestamp: '2026-09-17T11:46:26Z',
+      token: '211215140485151728',
+      transactionId: '211215140485151728',
+    };
+
+    function signingString(p: typeof opayPayload): string {
+      const refundedFlag = p.refunded ? 't' : 'f';
+      return (
+        `{Amount:"${p.amount}",Currency:"${p.currency}",Reference:"${p.reference}",` +
+        `Refunded:${refundedFlag},Status:"${p.status}",Timestamp:"${p.timestamp}",` +
+        `Token:"${p.token}",TransactionID:"${p.transactionId}"}`
+      );
+    }
+
+    function makeOpayBody(
+      p: typeof opayPayload,
+      sha512: string,
+      type = 'transaction-status',
+    ): Buffer {
+      return Buffer.from(JSON.stringify({ payload: p, sha512, type }), 'utf8');
+    }
+
+    it('should pass with a valid HMAC-SHA3-512 signature', () => {
+      const sig = crypto
+        .createHmac('sha3-512', SECRET)
+        .update(signingString(opayPayload))
+        .digest('hex');
+      const body = makeOpayBody(opayPayload, sig);
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).not.toThrow();
+    });
+
+    it('should reject a standard HMAC-SHA512 signature (confirming SHA3, not SHA2, is used)', () => {
+      const wrongAlgoSig = crypto
+        .createHmac('sha512', SECRET)
+        .update(signingString(opayPayload))
+        .digest('hex');
+      const body = makeOpayBody(opayPayload, wrongAlgoSig);
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+
+    it('should reject a signature computed over the raw JSON body instead of the formatted signing string', () => {
+      const bodyWithoutSig = Buffer.from(
+        JSON.stringify({ payload: opayPayload, type: 'transaction-status' }),
+        'utf8',
+      );
+      const wrongSig = crypto.createHmac('sha3-512', SECRET).update(bodyWithoutSig).digest('hex');
+      const body = makeOpayBody(opayPayload, wrongSig);
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+
+    it('should reject an unrecognized callback type (e.g. topup) rather than guess its signing format', () => {
+      const sig = crypto
+        .createHmac('sha3-512', SECRET)
+        .update(signingString(opayPayload))
+        .digest('hex');
+      const body = makeOpayBody(opayPayload, sig, 'topup');
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+
+    it('should throw on a body missing the sha512 field', () => {
+      const body = Buffer.from(
+        JSON.stringify({ payload: opayPayload, type: 'transaction-status' }),
+        'utf8',
+      );
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+
+    it('should throw on a non-JSON body', () => {
+      const body = Buffer.from('not-json', 'utf8');
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+  });
 });
