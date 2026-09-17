@@ -1,8 +1,8 @@
 openapi: 3.0.0
 paths:
-  /health:
+  /api/v1/health:
     get:
-      operationId: AppController_health
+      operationId: AppController_health_v1
       parameters: []
       responses:
         '200':
@@ -12,9 +12,9 @@ paths:
       summary: Check application health
       tags:
         - health
-  /gateways:
+  /api/v1/gateways:
     get:
-      operationId: GatewaysController_listGateways
+      operationId: GatewaysController_listGateways_v1
       parameters: []
       responses:
         '200':
@@ -24,9 +24,9 @@ paths:
       summary: List all payment gateways
       tags: &ref_1
         - gateways
-  /gateways/{name}/health:
+  /api/v1/gateways/{name}/health:
     get:
-      operationId: GatewaysController_getGatewayHealth
+      operationId: GatewaysController_getGatewayHealth_v1
       parameters:
         - name: name
           required: true
@@ -39,9 +39,9 @@ paths:
       security: *ref_0
       summary: Get health status of a payment gateway
       tags: *ref_1
-  /gateways/{name}/metrics:
+  /api/v1/gateways/{name}/metrics:
     get:
-      operationId: GatewaysController_getGatewayMetrics
+      operationId: GatewaysController_getGatewayMetrics_v1
       parameters:
         - name: name
           required: true
@@ -54,9 +54,9 @@ paths:
       security: *ref_0
       summary: Get metrics for a payment gateway
       tags: *ref_1
-  /gateways/{name}/config:
+  /api/v1/gateways/{name}/config:
     put:
-      operationId: GatewaysController_updateGatewayConfig
+      operationId: GatewaysController_updateGatewayConfig_v1
       parameters:
         - name: name
           required: true
@@ -95,9 +95,9 @@ paths:
       security: *ref_0
       summary: Update configuration for a payment gateway
       tags: *ref_1
-  /gateways/routing/config:
+  /api/v1/gateways/routing/config:
     get:
-      operationId: GatewaysController_getRoutingConfig
+      operationId: GatewaysController_getRoutingConfig_v1
       parameters: []
       responses:
         '200':
@@ -106,7 +106,7 @@ paths:
       summary: Get current routing configuration
       tags: *ref_1
     put:
-      operationId: GatewaysController_updateRoutingConfig
+      operationId: GatewaysController_updateRoutingConfig_v1
       parameters: []
       requestBody:
         required: true
@@ -147,9 +147,9 @@ paths:
       security: *ref_0
       summary: Update routing configuration
       tags: *ref_1
-  /payments:
+  /api/v1/payments:
     post:
-      operationId: TransactionsController_initiatePayment
+      operationId: TransactionsController_initiatePayment_v1
       parameters:
         - name: x-merchant-id
           required: true
@@ -199,7 +199,7 @@ paths:
       tags: &ref_2
         - Transactions
     get:
-      operationId: TransactionsController_getByMerchantOrderId
+      operationId: TransactionsController_getByMerchantOrderId_v1
       parameters:
         - name: merchant_order_id
           required: true
@@ -215,9 +215,9 @@ paths:
         '200':
           description: ''
       tags: *ref_2
-  /payments/{id}:
+  /api/v1/payments/{id}:
     get:
-      operationId: TransactionsController_getPayment
+      operationId: TransactionsController_getPayment_v1
       parameters:
         - name: id
           required: true
@@ -231,9 +231,9 @@ paths:
           description: Payment not found
       summary: Retrieve payment details by ID
       tags: *ref_2
-  /payments/{id}/capture:
+  /api/v1/payments/{id}/capture:
     post:
-      operationId: TransactionsController_capturePayment
+      operationId: TransactionsController_capturePayment_v1
       parameters:
         - name: id
           required: true
@@ -265,9 +265,9 @@ paths:
           description: Invalid state transition
       summary: Capture an authorised payment
       tags: *ref_2
-  /payments/{id}/void:
+  /api/v1/payments/{id}/void:
     post:
-      operationId: TransactionsController_voidPayment
+      operationId: TransactionsController_voidPayment_v1
       parameters:
         - name: id
           required: true
@@ -286,9 +286,9 @@ paths:
           description: Invalid state transition
       summary: Void an authorised payment
       tags: *ref_2
-  /payments/{id}/refund:
+  /api/v1/payments/{id}/refund:
     post:
-      operationId: TransactionsController_refundPayment
+      operationId: TransactionsController_refundPayment_v1
       parameters:
         - name: id
           required: true
@@ -330,9 +330,9 @@ paths:
           description: Invalid state transition
       summary: Refund a completed payment
       tags: *ref_2
-  /payments/{id}/timeline:
+  /api/v1/payments/{id}/timeline:
     get:
-      operationId: TransactionsController_getTimeline
+      operationId: TransactionsController_getTimeline_v1
       parameters:
         - name: id
           required: true
@@ -346,9 +346,9 @@ paths:
           description: Payment not found
       summary: Retrieve payment timeline
       tags: *ref_2
-  /payments/{id}/refunds:
+  /api/v1/payments/{id}/refunds:
     get:
-      operationId: TransactionsController_getRefunds
+      operationId: TransactionsController_getRefunds_v1
       parameters:
         - name: id
           required: true
@@ -362,9 +362,9 @@ paths:
           description: Payment not found
       summary: List refunds for a payment
       tags: *ref_2
-  /payments/analytics/success-rate:
+  /api/v1/payments/analytics/success-rate:
     get:
-      operationId: TransactionsController_getSuccessRate
+      operationId: TransactionsController_getSuccessRate_v1
       parameters:
         - name: to
           required: false
@@ -381,9 +381,9 @@ paths:
           description: Success rate analytics retrieved
       summary: Get payment success rate analytics
       tags: *ref_2
-  /payments/analytics/volume:
+  /api/v1/payments/analytics/volume:
     get:
-      operationId: TransactionsController_getVolume
+      operationId: TransactionsController_getVolume_v1
       parameters:
         - name: to
           required: false
@@ -400,9 +400,9 @@ paths:
           description: Volume analytics retrieved
       summary: Get payment volume analytics
       tags: *ref_2
-  /webhooks/razorpay:
+  /api/v1/webhooks/razorpay:
     post:
-      operationId: WebhooksController_razorpayWebhook
+      operationId: WebhooksController_razorpayWebhook_v1
       parameters: []
       responses:
         '200':
@@ -412,9 +412,9 @@ paths:
       summary: Handle Razorpay webhook
       tags: &ref_4
         - webhooks
-  /webhooks/stripe:
+  /api/v1/webhooks/stripe:
     post:
-      operationId: WebhooksController_stripeWebhook
+      operationId: WebhooksController_stripeWebhook_v1
       parameters: []
       responses:
         '200':
@@ -422,9 +422,9 @@ paths:
       security: *ref_3
       summary: Handle Stripe webhook
       tags: *ref_4
-  /webhooks/payu:
+  /api/v1/webhooks/payu:
     post:
-      operationId: WebhooksController_payuWebhook
+      operationId: WebhooksController_payuWebhook_v1
       parameters: []
       responses:
         '200':
@@ -432,9 +432,9 @@ paths:
       security: *ref_3
       summary: Handle PayU webhook
       tags: *ref_4
-  /webhooks/upi:
+  /api/v1/webhooks/upi:
     post:
-      operationId: WebhooksController_upiWebhook
+      operationId: WebhooksController_upiWebhook_v1
       parameters: []
       responses:
         '200':
@@ -442,9 +442,9 @@ paths:
       security: *ref_3
       summary: Handle UPI webhook
       tags: *ref_4
-  /webhooks/paystack:
+  /api/v1/webhooks/paystack:
     post:
-      operationId: WebhooksController_paystackWebhook
+      operationId: WebhooksController_paystackWebhook_v1
       parameters: []
       responses:
         '200':
@@ -452,9 +452,9 @@ paths:
       security: *ref_3
       summary: Handle Paystack webhook
       tags: *ref_4
-  /webhooks/flutterwave:
+  /api/v1/webhooks/flutterwave:
     post:
-      operationId: WebhooksController_flutterwaveWebhook
+      operationId: WebhooksController_flutterwaveWebhook_v1
       parameters: []
       responses:
         '200':
@@ -462,9 +462,9 @@ paths:
       security: *ref_3
       summary: Handle Flutterwave webhook
       tags: *ref_4
-  /webhooks/interswitch:
+  /api/v1/webhooks/interswitch:
     post:
-      operationId: WebhooksController_interswitchWebhook
+      operationId: WebhooksController_interswitchWebhook_v1
       parameters: []
       responses:
         '200':
@@ -472,9 +472,9 @@ paths:
       security: *ref_3
       summary: Handle Interswitch webhook
       tags: *ref_4
-  /webhooks/opay:
+  /api/v1/webhooks/opay:
     post:
-      operationId: WebhooksController_opayWebhook
+      operationId: WebhooksController_opayWebhook_v1
       parameters: []
       responses:
         '200':
@@ -482,9 +482,9 @@ paths:
       security: *ref_3
       summary: Handle Opay webhook
       tags: *ref_4
-  /webhooks/dlq:
+  /api/v1/webhooks/dlq:
     get:
-      operationId: WebhooksController_getDLQ
+      operationId: WebhooksController_getDLQ_v1
       parameters:
         - name: gateway
           required: true
@@ -497,9 +497,9 @@ paths:
       security: *ref_3
       summary: Retrieve failed webhooks
       tags: *ref_4
-  /webhooks/dlq/{id}/replay:
+  /api/v1/webhooks/dlq/{id}/replay:
     post:
-      operationId: WebhooksController_replayDLQ
+      operationId: WebhooksController_replayDLQ_v1
       parameters:
         - name: id
           required: true
@@ -512,9 +512,9 @@ paths:
       security: *ref_3
       summary: Replay a failed webhook
       tags: *ref_4
-  /reconciliation/trigger:
+  /api/v1/reconciliation/trigger:
     post:
-      operationId: ReconciliationController_triggerReconciliation
+      operationId: ReconciliationController_triggerReconciliation_v1
       parameters: []
       responses:
         '200':
@@ -524,9 +524,9 @@ paths:
       summary: Trigger reconciliation process
       tags: &ref_6
         - reconciliation
-  /reconciliation/reports/{runId}:
+  /api/v1/reconciliation/reports/{runId}:
     get:
-      operationId: ReconciliationController_getReport
+      operationId: ReconciliationController_getReport_v1
       parameters:
         - name: runId
           required: true
@@ -539,9 +539,9 @@ paths:
       security: *ref_5
       summary: Get reconciliation report
       tags: *ref_6
-  /reconciliation/anomalies:
+  /api/v1/reconciliation/anomalies:
     get:
-      operationId: ReconciliationController_getAnomalies
+      operationId: ReconciliationController_getAnomalies_v1
       parameters: []
       responses:
         '200':

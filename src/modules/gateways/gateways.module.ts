@@ -5,6 +5,10 @@ import { RazorpayAdapter } from './adapters/razorpay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { PayUAdapter } from './adapters/payu.adapter';
 import { UpiAdapter } from './adapters/upi.adapter';
+import { PaystackAdapter } from './adapters/paystack.adapter';
+import { FlutterwaveAdapter } from './adapters/flutterwave.adapter';
+import { InterswitchAdapter } from './adapters/interswitch.adapter';
+import { OpayAdapter } from './adapters/opay.adapter';
 import { GatewayAdapterRegistry } from './adapters/gateway-adapter.registry';
 import { CircuitBreakerService } from './circuit-breaker/circuit-breaker.service';
 import { GatewayHealthService } from './health/gateway-health.service';
@@ -19,6 +23,10 @@ import { GatewaysController } from './gateways.controller';
     StripeAdapter,
     PayUAdapter,
     UpiAdapter,
+    PaystackAdapter,
+    FlutterwaveAdapter,
+    InterswitchAdapter,
+    OpayAdapter,
     GatewayAdapterRegistry,
     // Services
     CircuitBreakerService,

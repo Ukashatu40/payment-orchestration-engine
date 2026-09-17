@@ -62,6 +62,16 @@ async function bootstrap() {
     }),
   );
 
+  // API versioning — /api/v1/... — must be set BEFORE
+  // SwaggerModule.createDocument() below. createDocument() reflects
+  // the app's routes as configured at the moment it's called; setting
+  // the prefix/versioning after it (as this previously did) generates
+  // an OpenAPI spec with bare paths like /payments instead of
+  // /api/v1/payments, causing Swagger UI's "Try it out" to 404 against
+  // the real server even though the actual API works correctly.
+  app.setGlobalPrefix('api');
+  app.enableVersioning({ type: VersioningType.URI });
+
   // Swagger setup
   const swaggerConfig = new DocumentBuilder()
     .setTitle('PayFlow Orchestration Layer')
@@ -105,10 +115,6 @@ async function bootstrap() {
 
   const yamlDocument = yaml.dump(document);
   fs.writeFileSync(path.join(docsDir, 'api-specification.yaml'), yamlDocument, 'utf8');
-
-  // API versioning — /api/v1/...
-  app.setGlobalPrefix('api');
-  app.enableVersioning({ type: VersioningType.URI });
 
   const port = configService.get<number>('PORT', 3000);
   await app.listen(port, '0.0.0.0');
