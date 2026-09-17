@@ -1,6 +1,6 @@
 # PayFlow Orchestration Layer
 
-Production-grade payment orchestration backend routing transactions across Razorpay, Stripe, PayU, and UPI with intelligent multi-criteria routing, sub-2-second gateway failover, absolute idempotency, and immutable audit trails.
+Production-grade payment orchestration backend routing transactions across Razorpay, Stripe, PayU, UPI, Paystack, Flutterwave, Interswitch, and Opay with intelligent multi-criteria routing, sub-2-second gateway failover, absolute idempotency, and immutable audit trails.
 
 ---
 
@@ -32,6 +32,26 @@ Expected response:
 
 ---
 
+## Configuring gateway sandbox credentials
+
+Gateway API keys and webhook secrets are stored in the `gateway_config` DB table (`api_key`, `webhook_secret`, `metadata` columns) and are **not** read from environment variables — this lets a secret rotate without a redeploy, and keeps `.env` files free of production-adjacent credentials. All 8 gateways already have a `gateway_config` row (seeded by migrations), so set real sandbox credentials with:
+
+```bash
+npx ts-node scripts/seed-gateway-secrets.ts \
+  --gateway=PAYSTACK --api-key=sk_test_xxx --webhook-secret=whsec_xxx
+
+# Gateways needing a second credential merge it into `metadata` instead of `api_key`:
+npx ts-node scripts/seed-gateway-secrets.ts \
+  --gateway=INTERSWITCH --api-key=client-id-xxx --metadata='{"clientSecret":"client-secret-xxx"}'
+
+npx ts-node scripts/seed-gateway-secrets.ts \
+  --gateway=OPAY --api-key=merchant-id-xxx --metadata='{"secretKey":"secret-key-xxx"}'
+```
+
+The four NGN gateways (Paystack, Flutterwave, Interswitch, Opay) make real outbound HTTP calls to their sandbox APIs — the mock/simulation `x-mock-*` headers used by the original 4 gateways don't apply to them.
+
+---
+
 ## Architecture
 
 ```text
@@ -46,7 +66,8 @@ Transaction State Machine (SELECT FOR UPDATE)
 Gateway Router (Multi-Criteria Scoring)
     ↓
 Circuit Breaker → Gateway Adapters
-(Razorpay, Stripe, PayU, UPI)
+(Razorpay, Stripe, PayU, UPI — mock adapters;
+ Paystack, Flutterwave, Interswitch, Opay — real HTTP adapters)
     ↓
 Webhook Pipeline → Reconciliation Engine
     ↓
@@ -65,7 +86,7 @@ flowchart TD
     D[Transaction State Machine<br/>SELECT FOR UPDATE]
     E[Gateway Router<br/>Multi-Criteria Scoring]
     F[Circuit Breaker]
-    G[Gateway Adapters<br/>Razorpay, Stripe, PayU, UPI]
+    G[Gateway Adapters<br/>Razorpay, Stripe, PayU, UPI, Paystack, Flutterwave, Interswitch, Opay]
     H[Webhook Pipeline]
     I[Reconciliation Engine]
     J[(PostgreSQL 15<br/>Immutable Audit Trail)]
@@ -141,6 +162,10 @@ X-API-Key header required on all endpoints except webhooks
 | POST   | `/webhooks/stripe`               | Stripe webhook receiver     |
 | POST   | `/webhooks/payu`                 | PayU webhook receiver       |
 | POST   | `/webhooks/upi`                  | UPI callback receiver       |
+| POST   | `/webhooks/paystack`             | Paystack webhook receiver   |
+| POST   | `/webhooks/flutterwave`          | Flutterwave webhook receiver|
+| POST   | `/webhooks/interswitch`          | Interswitch webhook receiver|
+| POST   | `/webhooks/opay`                 | Opay webhook receiver       |
 | GET    | `/gateways`                      | List gateways with health   |
 | GET    | `/gateways/:name/health`         | Circuit breaker state       |
 | GET    | `/gateways/:name/metrics`        | Gateway performance metrics |
@@ -175,6 +200,8 @@ X-API-Key header required on all endpoints except webhooks
 | FS-13 Key collision              | Composite `(merchant_id, key)` scoping        |
 | FS-14 Connection exhaustion      | Short-lived locks + connection pooling        |
 | FS-15 State corruption           | Invalid transition exception before DB write  |
+| FS-16 NGN payment flow           | Router selects an NGN-supporting gateway; real HTTP adapter returns `pending`, webhook drives completion |
+| FS-17 Currency/method mismatch   | Router excludes gateways lacking currency support → `NO_GATEWAY_AVAILABLE` |
 
 ---
 

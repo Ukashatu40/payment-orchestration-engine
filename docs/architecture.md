@@ -54,7 +54,7 @@ flowchart TD
 
         G --> H["Circuit Breaker<br/>Per Gateway"]
 
-        G --> I["Gateway Adapter Layer<br/><br/>Razorpay, Stripe, PayU, UPI NPCI"]
+        G --> I["Gateway Adapter Layer<br/><br/>Razorpay, Stripe, PayU, UPI NPCI (mock)<br/>Paystack, Flutterwave, Interswitch, Opay (real HTTP)"]
 
         I --> J["Webhook Ingestion Pipeline<br/><br/>Verify → Deduplicate → Queue → Process → Audit"]
 
@@ -124,6 +124,32 @@ Batch job running every 15 minutes. Identifies stale transactions,
 polls gateway status APIs, detects discrepancies, and flags anomalies
 for human review. Never auto-triggers refunds on settlement mismatches.
 Satisfies FS-11.
+
+### 4.7 Gateway Adapters — Mock vs Real HTTP
+
+The original four adapters (Razorpay, Stripe, PayU, UPI) extend
+`BaseMockAdapter` and never touch the network — they synthesize
+responses in-process, driven by `x-mock-*` request headers, for
+deterministic scenario testing. The four Nigerian gateways (Paystack,
+Flutterwave, Interswitch, Opay) extend a sibling base class,
+`BaseHttpAdapter`, and make real outbound HTTP calls to each gateway's
+sandbox/production API. `BaseHttpAdapter` centralizes: per-call
+`gateway_config` lookup (so `api_key`/`timeout_ms` changes take effect
+without a redeploy), and mapping of transport-level failures
+(timeouts, 5xx, network errors, 429) to the existing
+`GatewayTimeoutException`/`GatewayUnavailableException` types — so the
+circuit breaker and router failover logic work identically for both
+adapter families with no changes.
+
+Paystack/Flutterwave/Opay's checkout flows are redirect-based, not
+synchronous, so `authorise()` on these adapters returns `status:
+'pending'` and the transaction remains in `AUTH_INITIATED` until the
+gateway's webhook (`charge.success`, `charge.completed`, etc.) drives
+it forward via the webhook processor — a materially different
+completion model than the mostly-synchronous mock adapters. See
+[ADR-004](adr/ADR-004-real-http-gateway-integration.md) for the full
+rationale, including why no generic HTTP retry library is used.
+Satisfies the NGN routing requirements (FS-16, FS-17).
 
 ---
 
@@ -198,6 +224,8 @@ No division or multiplication of amounts occurs in SQL.
 | FS-13 Key collision           | (merchant_id, key) composite PK   | A4.2      |
 | FS-14 Connection exhaustion   | PgBouncer + short-lived locks     | A8.1      |
 | FS-15 State corruption        | InvalidStateTransitionException   | A2.1      |
+| FS-16 NGN payment flow        | Currency-filtered routing + real HTTP adapter | 4.7 |
+| FS-17 Currency/method mismatch| Router excludes non-matching gateways | 4.2/4.7 |
 
 ---
 

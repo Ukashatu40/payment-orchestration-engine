@@ -67,8 +67,9 @@ async function bootstrap() {
     .setTitle('PayFlow Orchestration Layer')
     .setDescription(
       'Production-grade payment orchestration API routing transactions ' +
-        'across Razorpay, Stripe, PayU, and UPI with intelligent failover, ' +
-        'idempotency, and complete audit trails.',
+        'across Razorpay, Stripe, PayU, UPI, Paystack, Flutterwave, ' +
+        'Interswitch, and Opay with intelligent failover, idempotency, ' +
+        'and complete audit trails.',
     )
     .setVersion('1.0.0')
     .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header' }, 'X-API-Key')

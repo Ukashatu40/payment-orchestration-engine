@@ -68,6 +68,10 @@ paths:
               - STRIPE
               - PAYU
               - UPI
+              - PAYSTACK
+              - FLUTTERWAVE
+              - INTERSWITCH
+              - OPAY
             type: string
       requestBody:
         required: true
@@ -438,6 +442,46 @@ paths:
       security: *ref_3
       summary: Handle UPI webhook
       tags: *ref_4
+  /webhooks/paystack:
+    post:
+      operationId: WebhooksController_paystackWebhook
+      parameters: []
+      responses:
+        '200':
+          description: Webhook received
+      security: *ref_3
+      summary: Handle Paystack webhook
+      tags: *ref_4
+  /webhooks/flutterwave:
+    post:
+      operationId: WebhooksController_flutterwaveWebhook
+      parameters: []
+      responses:
+        '200':
+          description: Webhook received
+      security: *ref_3
+      summary: Handle Flutterwave webhook
+      tags: *ref_4
+  /webhooks/interswitch:
+    post:
+      operationId: WebhooksController_interswitchWebhook
+      parameters: []
+      responses:
+        '200':
+          description: Webhook received
+      security: *ref_3
+      summary: Handle Interswitch webhook
+      tags: *ref_4
+  /webhooks/opay:
+    post:
+      operationId: WebhooksController_opayWebhook
+      parameters: []
+      responses:
+        '200':
+          description: Webhook received
+      security: *ref_3
+      summary: Handle Opay webhook
+      tags: *ref_4
   /webhooks/dlq:
     get:
       operationId: WebhooksController_getDLQ
@@ -509,8 +553,8 @@ info:
   title: PayFlow Orchestration Layer
   description: >-
     Production-grade payment orchestration API routing transactions across
-    Razorpay, Stripe, PayU, and UPI with intelligent failover, idempotency, and
-    complete audit trails.
+    Razorpay, Stripe, PayU, UPI, Paystack, Flutterwave, Interswitch, and Opay
+    with intelligent failover, idempotency, and complete audit trails.
   version: 1.0.0
   contact: {}
 tags:
