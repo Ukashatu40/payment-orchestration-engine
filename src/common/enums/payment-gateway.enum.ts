@@ -3,4 +3,8 @@ export enum PaymentGateway {
   STRIPE = 'STRIPE',
   PAYU = 'PAYU',
   UPI = 'UPI',
+  PAYSTACK = 'PAYSTACK',
+  FLUTTERWAVE = 'FLUTTERWAVE',
+  INTERSWITCH = 'INTERSWITCH',
+  OPAY = 'OPAY',
 }

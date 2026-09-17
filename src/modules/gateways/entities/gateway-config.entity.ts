@@ -24,6 +24,14 @@ export class GatewayConfig {
   })
   supportedMethods!: PaymentMethod[];
 
+  @Column({
+    name: 'supported_currencies',
+    type: 'text',
+    array: true,
+    default: '{}',
+  })
+  supportedCurrencies!: string[];
+
   // Circuit breaker config — changeable without redeployment (Section A3.3)
   @Column({ name: 'cb_failure_threshold', type: 'int', default: 5 })
   cbFailureThreshold!: number;

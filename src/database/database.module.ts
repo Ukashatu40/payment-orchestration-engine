@@ -14,6 +14,10 @@ import { CreateReconciliationLog1748000000007 } from './migrations/007-create-re
 import { CreateRefunds1748000000008 } from './migrations/008-create-refunds';
 import { CreateGatewayConfig1748000000009 } from './migrations/009-create-gateway-config';
 import { CreateRoutingConfigAndSeed1748000000010 } from './migrations/010-create-routing-config-and-seed';
+import { AddNgnGatewayEnumValues1748000000011 } from './migrations/011-add-ngn-gateway-enum-values';
+import { AddNgnPaymentMethodEnumValues1748000000012 } from './migrations/012-add-ngn-payment-method-enum-values';
+import { AddGatewayConfigSupportedCurrencies1748000000013 } from './migrations/013-add-gateway-config-supported-currencies';
+import { SeedNgnGatewayConfig1748000000014 } from './migrations/014-seed-ngn-gateway-config';
 import { Transaction } from '../modules/transactions/entities/transaction.entity';
 import { TransactionStateLog } from '../modules/transactions/entities/transaction-state-log.entity';
 import { Refund } from '../modules/transactions/entities/refund.entity';
@@ -62,8 +66,20 @@ import { ReconciliationLog } from '../modules/reconciliation/entities/reconcilia
           CreateRefunds1748000000008,
           CreateGatewayConfig1748000000009,
           CreateRoutingConfigAndSeed1748000000010,
+          AddNgnGatewayEnumValues1748000000011,
+          AddNgnPaymentMethodEnumValues1748000000012,
+          AddGatewayConfigSupportedCurrencies1748000000013,
+          SeedNgnGatewayConfig1748000000014,
         ],
         migrationsRun: true,
+        // TypeORM's default ('all') wraps every pending migration in a
+        // single transaction, which breaks ALTER TYPE ... ADD VALUE
+        // migrations (011, 012): Postgres refuses to use a new enum
+        // value until the transaction that added it has committed, and
+        // 'all' mode never commits until every migration in the batch
+        // has run. 'each' commits per migration, so 011 is durable
+        // before 014 uses the values it added.
+        migrationsTransactionMode: 'each',
         synchronize: false, // never true in production
         logging: config.get('NODE_ENV') === 'development' ? ['query', 'error'] : ['error'],
         extra: {
