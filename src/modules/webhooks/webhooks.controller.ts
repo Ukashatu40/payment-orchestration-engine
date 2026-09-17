@@ -67,6 +67,42 @@ export class WebhooksController {
     return this.handleWebhook(PaymentGateway.UPI, req);
   }
 
+  // POST /api/v1/webhooks/paystack
+  @Post('paystack')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle Paystack webhook' })
+  @ApiResponse({ status: 200, description: 'Webhook received' })
+  async paystackWebhook(@Req() req: FastifyRequest): Promise<{ received: true }> {
+    return this.handleWebhook(PaymentGateway.PAYSTACK, req);
+  }
+
+  // POST /api/v1/webhooks/flutterwave
+  @Post('flutterwave')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle Flutterwave webhook' })
+  @ApiResponse({ status: 200, description: 'Webhook received' })
+  async flutterwaveWebhook(@Req() req: FastifyRequest): Promise<{ received: true }> {
+    return this.handleWebhook(PaymentGateway.FLUTTERWAVE, req);
+  }
+
+  // POST /api/v1/webhooks/interswitch
+  @Post('interswitch')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle Interswitch webhook' })
+  @ApiResponse({ status: 200, description: 'Webhook received' })
+  async interswitchWebhook(@Req() req: FastifyRequest): Promise<{ received: true }> {
+    return this.handleWebhook(PaymentGateway.INTERSWITCH, req);
+  }
+
+  // POST /api/v1/webhooks/opay
+  @Post('opay')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Handle Opay webhook' })
+  @ApiResponse({ status: 200, description: 'Webhook received' })
+  async opayWebhook(@Req() req: FastifyRequest): Promise<{ received: true }> {
+    return this.handleWebhook(PaymentGateway.OPAY, req);
+  }
+
   // GET /api/v1/webhooks/dlq
   @Get('dlq')
   @ApiOperation({ summary: 'Retrieve failed webhooks' })
@@ -123,6 +159,8 @@ export class WebhooksController {
       headers['stripe-signature'] ??
       headers['x-payu-signature'] ??
       headers['x-upi-signature'] ??
+      headers['x-paystack-signature'] ??
+      headers['verif-hash'] ??
       '';
 
     // Step 5: Enqueue for async processing

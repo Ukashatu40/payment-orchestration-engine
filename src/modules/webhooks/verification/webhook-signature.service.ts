@@ -29,6 +29,14 @@ export class WebhookSignatureService {
         return this.verifyPayU(rawBody, headers, secret);
       case PaymentGateway.UPI:
         return this.verifyUpi(rawBody, headers, secret);
+      case PaymentGateway.PAYSTACK:
+        return this.verifyPaystack(rawBody, headers, secret);
+      case PaymentGateway.FLUTTERWAVE:
+        return this.verifyFlutterwave(headers, secret);
+      case PaymentGateway.INTERSWITCH:
+        return this.verifyInterswitch();
+      case PaymentGateway.OPAY:
+        return this.verifyOpay();
     }
   }
 
@@ -138,6 +146,63 @@ export class WebhookSignatureService {
   }
 
   // ----------------------------------------------------------------
+  // Paystack — HMAC-SHA512 (not SHA256 like the other gateways above)
+  // Header: x-paystack-signature
+  // ----------------------------------------------------------------
+  private verifyPaystack(
+    rawBody: Buffer,
+    headers: Record<string, string | string[] | undefined>,
+    secret: string,
+  ): void {
+    const signature = this.extractHeader(headers, 'x-paystack-signature', PaymentGateway.PAYSTACK);
+
+    const expected = crypto.createHmac('sha512', secret).update(rawBody).digest('hex');
+
+    this.timingSafeCompare(signature, expected, PaymentGateway.PAYSTACK);
+  }
+
+  // ----------------------------------------------------------------
+  // Flutterwave — NOT an HMAC. Flutterwave sends back a pre-shared
+  // "hash" value (configured in the dashboard, stored as this
+  // gateway's webhookSecret) verbatim on every webhook, compared
+  // directly against the header — there is no signing of the body.
+  // Header: verif-hash
+  // ----------------------------------------------------------------
+  private verifyFlutterwave(
+    headers: Record<string, string | string[] | undefined>,
+    secret: string,
+  ): void {
+    const received = this.extractHeader(headers, 'verif-hash', PaymentGateway.FLUTTERWAVE);
+
+    this.timingSafeCompareRaw(received, secret, PaymentGateway.FLUTTERWAVE);
+  }
+
+  // ----------------------------------------------------------------
+  // Interswitch / Opay — signature scheme not yet confirmed against
+  // current live merchant docs (Interswitch's API surface has shifted
+  // between Quickteller/Passport/Webpay product lines historically;
+  // Opay's outbound request-signing is documented as HMAC-SHA512 but
+  // whether webhook verification uses the identical scheme is
+  // unconfirmed). Fail closed rather than guess a scheme and silently
+  // accept unverified webhooks.
+  // ----------------------------------------------------------------
+  private verifyInterswitch(): void {
+    this.logger.error(
+      'Interswitch webhook signature verification is not implemented — ' +
+        'confirm the current scheme against Interswitch merchant docs',
+    );
+    throw new WebhookSignatureInvalidException(PaymentGateway.INTERSWITCH);
+  }
+
+  private verifyOpay(): void {
+    this.logger.error(
+      'Opay webhook signature verification is not implemented — ' +
+        'confirm the current scheme against Opay merchant docs',
+    );
+    throw new WebhookSignatureInvalidException(PaymentGateway.OPAY);
+  }
+
+  // ----------------------------------------------------------------
   // Timing-safe comparison — prevents timing attacks (Section A5.3)
   // Using === is vulnerable to byte-by-byte timing leaks.
   // ----------------------------------------------------------------
@@ -161,6 +226,25 @@ export class WebhookSignatureService {
         gateway,
         error: (err as Error).message,
       });
+      throw new WebhookSignatureInvalidException(gateway);
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Timing-safe comparison for raw (non-hex) shared-secret values,
+  // e.g. Flutterwave's verif-hash. crypto.timingSafeEqual requires
+  // equal-length buffers, so unequal lengths are treated as a
+  // mismatch rather than thrown.
+  // ----------------------------------------------------------------
+  private timingSafeCompareRaw(received: string, expected: string, gateway: PaymentGateway): void {
+    const receivedBuf = Buffer.from(received, 'utf8');
+    const expectedBuf = Buffer.from(expected, 'utf8');
+
+    if (
+      receivedBuf.length !== expectedBuf.length ||
+      !crypto.timingSafeEqual(receivedBuf, expectedBuf)
+    ) {
+      this.logger.warn('Webhook signature mismatch', { gateway });
       throw new WebhookSignatureInvalidException(gateway);
     }
   }

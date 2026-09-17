@@ -102,6 +102,18 @@ export class WebhookQueueService {
         return payload['txnid'] as string;
       case PaymentGateway.UPI:
         return payload['txnRef'] as string;
+      case PaymentGateway.PAYSTACK:
+        return (payload['event'] as string) + ':' + ((payload['data'] as any)?.['reference'] ?? '');
+      case PaymentGateway.FLUTTERWAVE:
+        return (payload['event'] as string) + ':' + ((payload['data'] as any)?.['tx_ref'] ?? '');
+      case PaymentGateway.INTERSWITCH:
+        // TODO: confirm Interswitch's webhook payload field names against
+        // current merchant docs — best-effort placeholder for now.
+        return (payload['transactionReference'] as string) ?? '';
+      case PaymentGateway.OPAY:
+        // TODO: confirm Opay's webhook payload field names against
+        // current merchant docs — best-effort placeholder for now.
+        return (payload['reference'] as string) ?? '';
       default:
         throw new Error(`Unknown gateway for event ID extraction: ${gateway}`);
     }
@@ -121,6 +133,13 @@ export class WebhookQueueService {
         return payload['status'] as string;
       case PaymentGateway.UPI:
         return payload['status'] as string;
+      case PaymentGateway.PAYSTACK:
+      case PaymentGateway.FLUTTERWAVE:
+        return (payload['event'] as string) ?? 'unknown';
+      case PaymentGateway.INTERSWITCH:
+      case PaymentGateway.OPAY:
+        // TODO: confirm event-type field name against current docs.
+        return (payload['event'] as string) ?? 'unknown';
       default:
         return 'unknown';
     }
