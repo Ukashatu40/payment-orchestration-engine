@@ -106,13 +106,21 @@ other more than initially assumed:
   over a specific formatted string built from named fields of the
   nested `payload` object, not the raw body. Source:
   [doc.opaycheckout.com/callback-signature](https://doc.opaycheckout.com/callback-signature).
-  Only the `"transaction-status"` callback type's signing string is
-  confirmed; other types (e.g. the docs separately reference a
-  `"topup"` signature method) are rejected rather than assumed to use
-  the same template — fail closed on the unconfirmed remainder rather
-  than guess. The confirmed payload also has no metadata-passthrough
-  field, so `opay.adapter.ts` sends our `transactionId` as `reference`,
-  echoed back as `payload.payload.reference`.
+  Two callback types are implemented, dispatched on a `type`
+  discriminator field: `"transaction-status"` (signing string built
+  from amount/currency/reference/refunded/status/timestamp/token/
+  transactionId) and `"topup"` (orderNo/merchantOrderNo/merchantId/
+  orderAmount/serviceType/orderStatus) — both signing-string templates
+  are quoted verbatim from the docs. The JSON *envelope* for `topup`
+  (that it's also `{ payload: {...}, sha512, type }`) is **inferred**,
+  not independently confirmed — the docs show the topup signing-string
+  template but no raw topup JSON example, only that its Java
+  verification code reuses the identical `payload.getSignature()`
+  accessor as `transaction-status`, implying a shared wrapper class.
+  Any other `type` value is rejected rather than guessed. The confirmed
+  payload has no metadata-passthrough field, so `opay.adapter.ts` sends
+  our `transactionId` as `reference`, echoed back as
+  `payload.payload.reference`.
 
 **7. Interswitch OAuth2 token caching.** Unlike the other three
 gateways' static bearer/signed-request auth, Interswitch requires a
@@ -127,8 +135,12 @@ within 60s of expiry) rather than fetching a new token per call.
   `AUTHORISED` is reachable synchronously for NGN transactions the way
   it is for the original 4 gateways.
 - Opay webhooks with a callback `type` other than `"transaction-status"`
-  (e.g. `"topup"`) are rejected until that signing format is confirmed
-  — a known, narrow gap, not a blanket "Opay webhooks don't work."
+  or `"topup"` are rejected outright. `"topup"` verification itself
+  works against the confirmed signing-string template, but its JSON
+  envelope assumption is unverified against a real event — test it
+  against a real Opay sandbox topup callback before depending on it in
+  production, and correct `verifyOpay`/`opayTopupSigningString` in
+  `webhook-signature.service.ts` if the real shape differs.
 - Endpoint paths and response field shapes for all 4 adapters reflect
   each gateway's public API as of implementation time and should be
   reconfirmed against current docs before production use, since these

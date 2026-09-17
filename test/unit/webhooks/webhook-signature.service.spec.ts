@@ -293,12 +293,14 @@ describe('WebhookSignatureService', () => {
       );
     });
 
-    it('should reject an unrecognized callback type (e.g. topup) rather than guess its signing format', () => {
+    it('should reject an unrecognized callback type rather than guess its signing format', () => {
       const sig = crypto
         .createHmac('sha3-512', SECRET)
         .update(signingString(opayPayload))
         .digest('hex');
-      const body = makeOpayBody(opayPayload, sig, 'topup');
+      // 'refund-status' (or any type other than the two confirmed
+      // ones) must not be treated as either known signing format.
+      const body = makeOpayBody(opayPayload, sig, 'refund-status');
 
       expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
         WebhookSignatureInvalidException,
@@ -318,6 +320,85 @@ describe('WebhookSignatureService', () => {
 
     it('should throw on a non-JSON body', () => {
       const body = Buffer.from('not-json', 'utf8');
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Opay — "topup" callback type. Signing-string template confirmed
+  // verbatim from https://doc.opaycheckout.com/callback-signature;
+  // the JSON envelope (payload wrapper + top-level sha512 field) is
+  // inferred by analogy with transaction-status (same page, same
+  // payload.getSignature() Java accessor) — not independently shown
+  // as a raw example on the docs page. See the code comment above
+  // opayTopupSigningString() for the full caveat.
+  // ----------------------------------------------------------------
+  describe('Opay verification — topup callback type', () => {
+    const topupPayload = {
+      orderNo: 'OP2409170001',
+      merchantOrderNo: 'topup-ref-001',
+      merchantId: 'merchant-xxx',
+      orderAmount: '50000',
+      serviceType: 'WALLET_TOPUP',
+      orderStatus: 'SUCCESS',
+    };
+
+    function topupSigningString(p: typeof topupPayload): string {
+      return (
+        `{orderNo:"${p.orderNo}",merchantOrderNo:"${p.merchantOrderNo}",` +
+        `merchantId:"${p.merchantId}",orderAmount:"${p.orderAmount}",` +
+        `serviceType:"${p.serviceType}",orderStatus:"${p.orderStatus}"}`
+      );
+    }
+
+    function makeTopupBody(p: typeof topupPayload, sha512: string): Buffer {
+      return Buffer.from(JSON.stringify({ payload: p, sha512, type: 'topup' }), 'utf8');
+    }
+
+    it('should pass with a valid HMAC-SHA3-512 signature over the topup signing string', () => {
+      const sig = crypto
+        .createHmac('sha3-512', SECRET)
+        .update(topupSigningString(topupPayload))
+        .digest('hex');
+      const body = makeTopupBody(topupPayload, sig);
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).not.toThrow();
+    });
+
+    it('should reject a signature computed with the transaction-status template instead of the topup one', () => {
+      // Confirms the two callback types are NOT interchangeable —
+      // using the wrong field set/template must fail verification.
+      const wrongTemplateSig = crypto
+        .createHmac('sha3-512', SECRET)
+        .update(
+          `{Amount:"${topupPayload.orderAmount}",Currency:"NGN",Reference:"${topupPayload.merchantOrderNo}",` +
+            `Refunded:f,Status:"${topupPayload.orderStatus}",Timestamp:"",Token:"",TransactionID:"${topupPayload.orderNo}"}`,
+        )
+        .digest('hex');
+      const body = makeTopupBody(topupPayload, wrongTemplateSig);
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+
+    it('should reject a standard HMAC-SHA512 signature (confirming SHA3 is used for topup too)', () => {
+      const wrongAlgoSig = crypto
+        .createHmac('sha512', SECRET)
+        .update(topupSigningString(topupPayload))
+        .digest('hex');
+      const body = makeTopupBody(topupPayload, wrongAlgoSig);
+
+      expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
+        WebhookSignatureInvalidException,
+      );
+    });
+
+    it('should reject a mismatched signature', () => {
+      const body = makeTopupBody(topupPayload, 'deadbeef');
 
       expect(() => service.verify(PaymentGateway.OPAY, body, {}, SECRET)).toThrow(
         WebhookSignatureInvalidException,

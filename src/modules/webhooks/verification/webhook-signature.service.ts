@@ -207,18 +207,9 @@ export class WebhookSignatureService {
   // HMAC-**SHA3-512** (note: SHA3, not the standard SHA2-512 the other
   // HMAC gateways in this file use) over a specific formatted string
   // built from named fields of the nested `payload` object — not the
-  // raw request body.
-  //
-  // Signing string (fields taken from `body.payload`):
-  //   {Amount:"<amount>",Currency:"<currency>",Reference:"<reference>",
-  //    Refunded:<t|f>,Status:"<status>",Timestamp:"<timestamp>",
-  //    Token:"<token>",TransactionID:"<transactionId>"}
-  // `refunded` renders as the bare (unquoted) character t/f.
-  //
-  // Only the "transaction-status" callback type's signing string is
-  // documented; Opay's docs separately reference a "topup" signature
-  // method whose exact format isn't confirmed here, so other callback
-  // types are rejected rather than assumed to use the same template.
+  // raw request body. Two callback types are documented, each with
+  // its own signing-string field set; a `type` discriminator field
+  // picks which one applies.
   //
   // Source: https://doc.opaycheckout.com/callback-signature
   // ----------------------------------------------------------------
@@ -226,16 +217,7 @@ export class WebhookSignatureService {
     let parsed: {
       type?: string;
       sha512?: string;
-      payload?: {
-        amount?: string;
-        currency?: string;
-        reference?: string;
-        refunded?: boolean;
-        status?: string;
-        timestamp?: string;
-        token?: string;
-        transactionId?: string;
-      };
+      payload?: Record<string, unknown>;
     };
 
     try {
@@ -255,23 +237,67 @@ export class WebhookSignatureService {
       throw new WebhookSignatureInvalidException(PaymentGateway.OPAY);
     }
 
-    if (parsed.type !== 'transaction-status') {
-      this.logger.error(
-        `Opay webhook signature verification for callback type "${parsed.type}" is not ` +
-          'implemented — only "transaction-status" is confirmed against current docs',
-      );
-      throw new WebhookSignatureInvalidException(PaymentGateway.OPAY);
-    }
+    let signingString: string;
 
-    const refundedFlag = data.refunded ? 't' : 'f';
-    const signingString =
-      `{Amount:"${data.amount}",Currency:"${data.currency}",Reference:"${data.reference}",` +
-      `Refunded:${refundedFlag},Status:"${data.status}",Timestamp:"${data.timestamp}",` +
-      `Token:"${data.token}",TransactionID:"${data.transactionId}"}`;
+    switch (parsed.type) {
+      case 'transaction-status':
+        signingString = this.opayTransactionStatusSigningString(data);
+        break;
+      case 'topup':
+        signingString = this.opayTopupSigningString(data);
+        break;
+      default:
+        this.logger.error(
+          `Opay webhook signature verification for callback type "${parsed.type}" is not ` +
+            'implemented — only "transaction-status" and "topup" are confirmed against current docs',
+        );
+        throw new WebhookSignatureInvalidException(PaymentGateway.OPAY);
+    }
 
     const expected = crypto.createHmac('sha3-512', secret).update(signingString).digest('hex');
 
     this.timingSafeCompare(receivedSignature, expected, PaymentGateway.OPAY);
+  }
+
+  // Signing string (fields taken from `body.payload`), confirmed
+  // verbatim from https://doc.opaycheckout.com/callback-signature:
+  //   {Amount:"<amount>",Currency:"<currency>",Reference:"<reference>",
+  //    Refunded:<t|f>,Status:"<status>",Timestamp:"<timestamp>",
+  //    Token:"<token>",TransactionID:"<transactionId>"}
+  // `refunded` renders as the bare (unquoted) character t/f.
+  private opayTransactionStatusSigningString(data: Record<string, unknown>): string {
+    const refundedFlag = data['refunded'] ? 't' : 'f';
+    return (
+      `{Amount:"${String(data['amount'])}",Currency:"${String(data['currency'])}",` +
+      `Reference:"${String(data['reference'])}",Refunded:${refundedFlag},` +
+      `Status:"${String(data['status'])}",Timestamp:"${String(data['timestamp'])}",` +
+      `Token:"${String(data['token'])}",TransactionID:"${String(data['transactionId'])}"}`
+    );
+  }
+
+  // Signing string template confirmed verbatim from
+  // https://doc.opaycheckout.com/callback-signature:
+  //   {orderNo:"<orderNo>",merchantOrderNo:"<merchantOrderNo>",
+  //    merchantId:"<merchantId>",orderAmount:"<orderAmount>",
+  //    serviceType:"<serviceType>",orderStatus:"<orderStatus>"}
+  // Unlike transaction-status, every field here is quoted (no bare
+  // t/f flag).
+  //
+  // NOT independently confirmed: whether a real topup callback's JSON
+  // envelope actually nests these fields under `payload` with the
+  // signature in a top-level `sha512` field the way transaction-status
+  // does — the docs don't show a raw topup JSON example. This is
+  // inferred from the topup verification code sample using the exact
+  // same `payload.getSignature()` accessor as the transaction-status
+  // sample, implying both share one wrapper/envelope shape. Verify
+  // this against a real Opay sandbox topup event before depending on
+  // it in production.
+  private opayTopupSigningString(data: Record<string, unknown>): string {
+    return (
+      `{orderNo:"${String(data['orderNo'])}",merchantOrderNo:"${String(data['merchantOrderNo'])}",` +
+      `merchantId:"${String(data['merchantId'])}",orderAmount:"${String(data['orderAmount'])}",` +
+      `serviceType:"${String(data['serviceType'])}",orderStatus:"${String(data['orderStatus'])}"}`
+    );
   }
 
   // ----------------------------------------------------------------
