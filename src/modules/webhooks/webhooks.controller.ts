@@ -153,7 +153,9 @@ export class WebhooksController {
     const eventId = this.queueService.extractEventId(gateway, payload);
     const eventType = this.queueService.extractEventType(gateway, payload);
 
-    // Step 4: Get signature header for storage
+    // Step 4: Get signature for storage. Opay carries its signature as
+    // a body field (`sha512`), not a header, unlike every other
+    // gateway here — see webhook-signature.service.ts.
     const signatureHeader =
       headers['x-razorpay-signature'] ??
       headers['stripe-signature'] ??
@@ -161,6 +163,8 @@ export class WebhooksController {
       headers['x-upi-signature'] ??
       headers['x-paystack-signature'] ??
       headers['verif-hash'] ??
+      headers['x-interswitch-signature'] ??
+      (payload['sha512'] as string | undefined) ??
       '';
 
     // Step 5: Enqueue for async processing

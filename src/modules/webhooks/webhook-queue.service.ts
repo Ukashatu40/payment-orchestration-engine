@@ -107,13 +107,14 @@ export class WebhookQueueService {
       case PaymentGateway.FLUTTERWAVE:
         return (payload['event'] as string) + ':' + ((payload['data'] as any)?.['tx_ref'] ?? '');
       case PaymentGateway.INTERSWITCH:
-        // TODO: confirm Interswitch's webhook payload field names against
-        // current merchant docs — best-effort placeholder for now.
-        return (payload['transactionReference'] as string) ?? '';
+        // Confirmed structure: { event, uuid, timestamp, data: {...} }
+        // per https://docs.interswitchgroup.com/v1.1/docs/webhooks —
+        // `uuid` is the webhook event's own unique identifier.
+        return (payload['uuid'] as string) ?? '';
       case PaymentGateway.OPAY:
-        // TODO: confirm Opay's webhook payload field names against
-        // current merchant docs — best-effort placeholder for now.
-        return (payload['reference'] as string) ?? '';
+        // Confirmed structure: { payload: { reference, ... }, sha512, type }
+        // per https://doc.opaycheckout.com/callback-signature
+        return (payload['payload'] as any)?.['reference'] ?? '';
       default:
         throw new Error(`Unknown gateway for event ID extraction: ${gateway}`);
     }
@@ -136,10 +137,25 @@ export class WebhookQueueService {
       case PaymentGateway.PAYSTACK:
       case PaymentGateway.FLUTTERWAVE:
         return (payload['event'] as string) ?? 'unknown';
-      case PaymentGateway.INTERSWITCH:
+      case PaymentGateway.INTERSWITCH: {
+        // Confirmed via docs: the top-level `event` (e.g.
+        // TRANSACTION.COMPLETED) does NOT itself indicate success vs
+        // failure — "such a transaction may or may not be successful."
+        // The outcome is data.responseCode ("00" = approved). Encode
+        // both into a composite type string so resolveTransition below
+        // can distinguish success from failure for the same event.
+        const event = (payload['event'] as string) ?? 'unknown';
+        const responseCode = (payload['data'] as any)?.['responseCode'];
+        if (event === 'TRANSACTION.COMPLETED') {
+          return responseCode === '00' ? `${event}:SUCCESS` : `${event}:FAILURE`;
+        }
+        return event;
+      }
       case PaymentGateway.OPAY:
-        // TODO: confirm event-type field name against current docs.
-        return (payload['event'] as string) ?? 'unknown';
+        // Confirmed: status lives at payload.payload.status (SUCCESS/
+        // FAIL/PENDING), not a top-level `event` field — see
+        // https://doc.opaycheckout.com/callback-signature
+        return (payload['payload'] as any)?.['status'] ?? 'unknown';
       default:
         return 'unknown';
     }

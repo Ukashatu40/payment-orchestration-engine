@@ -34,9 +34,9 @@ export class WebhookSignatureService {
       case PaymentGateway.FLUTTERWAVE:
         return this.verifyFlutterwave(headers, secret);
       case PaymentGateway.INTERSWITCH:
-        return this.verifyInterswitch();
+        return this.verifyInterswitch(rawBody, headers, secret);
       case PaymentGateway.OPAY:
-        return this.verifyOpay();
+        return this.verifyOpay(rawBody, secret);
     }
   }
 
@@ -178,28 +178,100 @@ export class WebhookSignatureService {
   }
 
   // ----------------------------------------------------------------
-  // Interswitch / Opay — signature scheme not yet confirmed against
-  // current live merchant docs (Interswitch's API surface has shifted
-  // between Quickteller/Passport/Webpay product lines historically;
-  // Opay's outbound request-signing is documented as HMAC-SHA512 but
-  // whether webhook verification uses the identical scheme is
-  // unconfirmed). Fail closed rather than guess a scheme and silently
-  // accept unverified webhooks.
+  // Interswitch — HMAC-SHA512 of the raw JSON body, hex-encoded.
+  // Header: X-Interswitch-Signature
+  // Secret: the merchant-specific key generated in the Quickteller
+  // Business dashboard's webhook configuration (stored as this
+  // gateway's webhookSecret).
+  // Source: https://docs.interswitchgroup.com/v1.1/docs/webhooks
   // ----------------------------------------------------------------
-  private verifyInterswitch(): void {
-    this.logger.error(
-      'Interswitch webhook signature verification is not implemented — ' +
-        'confirm the current scheme against Interswitch merchant docs',
+  private verifyInterswitch(
+    rawBody: Buffer,
+    headers: Record<string, string | string[] | undefined>,
+    secret: string,
+  ): void {
+    const signature = this.extractHeader(
+      headers,
+      'x-interswitch-signature',
+      PaymentGateway.INTERSWITCH,
     );
-    throw new WebhookSignatureInvalidException(PaymentGateway.INTERSWITCH);
+
+    const expected = crypto.createHmac('sha512', secret).update(rawBody).digest('hex');
+
+    this.timingSafeCompare(signature, expected, PaymentGateway.INTERSWITCH);
   }
 
-  private verifyOpay(): void {
-    this.logger.error(
-      'Opay webhook signature verification is not implemented — ' +
-        'confirm the current scheme against Opay merchant docs',
-    );
-    throw new WebhookSignatureInvalidException(PaymentGateway.OPAY);
+  // ----------------------------------------------------------------
+  // Opay — NOT header-based. The signature travels as a top-level
+  // `sha512` field in the callback JSON body, computed as
+  // HMAC-**SHA3-512** (note: SHA3, not the standard SHA2-512 the other
+  // HMAC gateways in this file use) over a specific formatted string
+  // built from named fields of the nested `payload` object — not the
+  // raw request body.
+  //
+  // Signing string (fields taken from `body.payload`):
+  //   {Amount:"<amount>",Currency:"<currency>",Reference:"<reference>",
+  //    Refunded:<t|f>,Status:"<status>",Timestamp:"<timestamp>",
+  //    Token:"<token>",TransactionID:"<transactionId>"}
+  // `refunded` renders as the bare (unquoted) character t/f.
+  //
+  // Only the "transaction-status" callback type's signing string is
+  // documented; Opay's docs separately reference a "topup" signature
+  // method whose exact format isn't confirmed here, so other callback
+  // types are rejected rather than assumed to use the same template.
+  //
+  // Source: https://doc.opaycheckout.com/callback-signature
+  // ----------------------------------------------------------------
+  private verifyOpay(rawBody: Buffer, secret: string): void {
+    let parsed: {
+      type?: string;
+      sha512?: string;
+      payload?: {
+        amount?: string;
+        currency?: string;
+        reference?: string;
+        refunded?: boolean;
+        status?: string;
+        timestamp?: string;
+        token?: string;
+        transactionId?: string;
+      };
+    };
+
+    try {
+      parsed = JSON.parse(rawBody.toString('utf8'));
+    } catch (err) {
+      this.logger.warn('Opay webhook body is not valid JSON', {
+        error: (err as Error).message,
+      });
+      throw new WebhookSignatureInvalidException(PaymentGateway.OPAY);
+    }
+
+    const receivedSignature = parsed.sha512;
+    const data = parsed.payload;
+
+    if (!receivedSignature || !data) {
+      this.logger.warn('Opay webhook missing sha512 or payload fields');
+      throw new WebhookSignatureInvalidException(PaymentGateway.OPAY);
+    }
+
+    if (parsed.type !== 'transaction-status') {
+      this.logger.error(
+        `Opay webhook signature verification for callback type "${parsed.type}" is not ` +
+          'implemented — only "transaction-status" is confirmed against current docs',
+      );
+      throw new WebhookSignatureInvalidException(PaymentGateway.OPAY);
+    }
+
+    const refundedFlag = data.refunded ? 't' : 'f';
+    const signingString =
+      `{Amount:"${data.amount}",Currency:"${data.currency}",Reference:"${data.reference}",` +
+      `Refunded:${refundedFlag},Status:"${data.status}",Timestamp:"${data.timestamp}",` +
+      `Token:"${data.token}",TransactionID:"${data.transactionId}"}`;
+
+    const expected = crypto.createHmac('sha3-512', secret).update(signingString).digest('hex');
+
+    this.timingSafeCompare(receivedSignature, expected, PaymentGateway.OPAY);
   }
 
   // ----------------------------------------------------------------

@@ -280,16 +280,17 @@ export class WebhookProcessorService {
           event: 'WEBHOOK_FLUTTERWAVE_REFUNDED',
         },
       },
-      // Interswitch/Opay event-type strings are unconfirmed against
-      // current docs (see webhook-signature.service.ts — both fail
-      // closed at signature verification today, so these entries are
-      // inert until that's implemented and confirmed).
+      // Interswitch's TRANSACTION.COMPLETED event doesn't itself say
+      // success vs failure — extractEventType (webhook-queue.service.ts)
+      // encodes data.responseCode into the type string, so the keys
+      // here are the composite form, not the raw `event` field value.
+      // See https://docs.interswitchgroup.com/v1.1/docs/webhooks
       [PaymentGateway.INTERSWITCH]: {
-        SUCCESSFUL: {
+        'TRANSACTION.COMPLETED:SUCCESS': {
           toState: TransactionState.CAPTURED,
           event: 'WEBHOOK_INTERSWITCH_CAPTURED',
         },
-        FAILED: {
+        'TRANSACTION.COMPLETED:FAILURE': {
           toState: TransactionState.AUTH_FAILED,
           event: 'WEBHOOK_INTERSWITCH_FAILED',
         },
@@ -339,12 +340,19 @@ export class WebhookProcessorService {
         return meta?.['transaction_id'] ?? null;
       }
       case PaymentGateway.INTERSWITCH: {
-        const metadata = (payload['data'] as any)?.['metadata'];
-        return metadata?.['transaction_id'] ?? null;
+        // Confirmed callback shape has no metadata passthrough field —
+        // interswitch.adapter.ts sends our transactionId AS
+        // merchant_reference, echoed back as data.merchantReference.
+        // See https://docs.interswitchgroup.com/v1.1/docs/webhooks
+        return (payload['data'] as any)?.['merchantReference'] ?? null;
       }
       case PaymentGateway.OPAY: {
-        const metadata = (payload['data'] as any)?.['metadata'];
-        return metadata?.['transaction_id'] ?? null;
+        // Opay's confirmed callback shape has no metadata passthrough
+        // field — opay.adapter.ts sends our transactionId AS the
+        // `reference` sent to Opay, so the callback's
+        // payload.payload.reference IS the transaction ID directly.
+        // See https://doc.opaycheckout.com/callback-signature
+        return (payload['payload'] as any)?.['reference'] ?? null;
       }
       default:
         return null;
@@ -415,7 +423,11 @@ export class WebhookProcessorService {
           return amount !== undefined ? BigInt(amount) : null;
         }
         case PaymentGateway.OPAY: {
-          const amount = (payload['data'] as any)?.['amount']?.['total'];
+          // Confirmed callback shape: payload.payload.amount is a
+          // kobo-denominated numeric string (e.g. "30000"), not an
+          // {total, currency} object. See
+          // https://doc.opaycheckout.com/callback-signature
+          const amount = (payload['payload'] as any)?.['amount'];
           return amount !== undefined ? BigInt(amount) : null;
         }
         default:

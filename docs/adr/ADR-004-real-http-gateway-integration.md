@@ -79,16 +79,40 @@ transitions extend the existing switch/map pattern** in
 `webhook-processor.service.ts` rather than introducing a polymorphic
 per-adapter webhook interface. The existing pattern is centralized and
 easy to audit; a larger refactor wasn't warranted by 4 more gateways.
-Paystack uses HMAC-SHA512 (the other gateways in this file use
-SHA256). Flutterwave's scheme is a direct pre-shared secret comparison
-via the `verif-hash` header, not an HMAC over the body — structurally
-different from every other gateway here. Interswitch and Opay's
-webhook signature schemes are unconfirmed against current live docs
-and are implemented to **fail closed** (reject with
-`WebhookSignatureInvalidException`) rather than guess a scheme and
-silently accept unverified webhooks — this must be implemented for
-real before those two gateways' webhooks can be relied on in
-production.
+All four schemes were confirmed against live current documentation
+(not guessed) before implementing, and turned out to differ from each
+other more than initially assumed:
+- **Paystack**: HMAC-SHA512 of the raw body, header
+  `x-paystack-signature` (the other gateways in this file use SHA256).
+- **Flutterwave**: a direct pre-shared secret comparison via the
+  `verif-hash` header, not an HMAC over the body at all.
+- **Interswitch**: HMAC-SHA512 of the raw body, header
+  `X-Interswitch-Signature`. Source:
+  [docs.interswitchgroup.com/v1.1/docs/webhooks](https://docs.interswitchgroup.com/v1.1/docs/webhooks).
+  Confirming this also revealed the webhook envelope's top-level
+  `event` field (e.g. `TRANSACTION.COMPLETED`) does **not** itself
+  indicate success vs. failure — the docs state such a transaction
+  "may or may not be successful." The actual outcome is
+  `data.responseCode` (`"00"` = approved). `extractEventType`
+  therefore encodes both into a composite type string
+  (`TRANSACTION.COMPLETED:SUCCESS`/`:FAILURE`) for
+  `resolveTransition` to key on. There is also no metadata-passthrough
+  field — `interswitch.adapter.ts` sends our `transactionId` as
+  `merchant_reference`, echoed back as `data.merchantReference`.
+- **Opay**: the signature is **not header-based** — it's a top-level
+  `sha512` field in the callback JSON body, computed as HMAC-**SHA3-512**
+  (confirmed distinct from the standard SHA2-512 used elsewhere in
+  this file — Node's `crypto` supports `'sha3-512'` as a digest name)
+  over a specific formatted string built from named fields of the
+  nested `payload` object, not the raw body. Source:
+  [doc.opaycheckout.com/callback-signature](https://doc.opaycheckout.com/callback-signature).
+  Only the `"transaction-status"` callback type's signing string is
+  confirmed; other types (e.g. the docs separately reference a
+  `"topup"` signature method) are rejected rather than assumed to use
+  the same template — fail closed on the unconfirmed remainder rather
+  than guess. The confirmed payload also has no metadata-passthrough
+  field, so `opay.adapter.ts` sends our `transactionId` as `reference`,
+  echoed back as `payload.payload.reference`.
 
 **7. Interswitch OAuth2 token caching.** Unlike the other three
 gateways' static bearer/signed-request auth, Interswitch requires a
@@ -102,9 +126,9 @@ within 60s of expiry) rather than fetching a new token per call.
   `authorise()`; consumers of the payment API must not assume
   `AUTHORISED` is reachable synchronously for NGN transactions the way
   it is for the original 4 gateways.
-- Interswitch and Opay webhooks will be rejected (401) until their
-  signature schemes are confirmed against current docs and
-  implemented — tracked as a known gap, not silently insecure.
+- Opay webhooks with a callback `type` other than `"transaction-status"`
+  (e.g. `"topup"`) are rejected until that signing format is confirmed
+  — a known, narrow gap, not a blanket "Opay webhooks don't work."
 - Endpoint paths and response field shapes for all 4 adapters reflect
   each gateway's public API as of implementation time and should be
   reconfirmed against current docs before production use, since these
