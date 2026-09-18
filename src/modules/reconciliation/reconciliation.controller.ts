@@ -8,6 +8,9 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { UserRole } from '../../common/enums';
 import { UserAuditLogRepository } from '../users/repositories/user-audit-log.repository';
+import { AnomalyDto } from './dto/anomaly.dto';
+import { ReconciliationRunResultDto } from './dto/reconciliation-run-result.dto';
+import { ResolveAnomalyResultDto } from './dto/resolve-anomaly-result.dto';
 
 @ApiTags('reconciliation')
 @ApiSecurity('X-API-Key')
@@ -25,9 +28,15 @@ export class ReconciliationController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Trigger reconciliation process' })
-  @ApiResponse({ status: 200, description: 'Reconciliation triggered' })
+  @ApiResponse({
+    status: 200,
+    description: 'Reconciliation triggered',
+    type: ReconciliationRunResultDto,
+  })
   @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
-  async triggerReconciliation(@CurrentUser() user: AuthenticatedUser) {
+  async triggerReconciliation(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ReconciliationRunResultDto> {
     const result = await this.reconciliationService.run();
 
     await this.auditLogRepo.record({
@@ -43,16 +52,16 @@ export class ReconciliationController {
   // GET /api/v1/reconciliation/reports/:run_id
   @Get('reports/:runId')
   @ApiOperation({ summary: 'Get reconciliation report' })
-  @ApiResponse({ status: 200, description: 'Report retrieved' })
-  async getReport(@Param('runId') runId: string) {
+  @ApiResponse({ status: 200, description: 'Report retrieved', type: [AnomalyDto] })
+  async getReport(@Param('runId') runId: string): Promise<AnomalyDto[]> {
     return this.reconciliationService.getReport(runId);
   }
 
   // GET /api/v1/reconciliation/anomalies
   @Get('anomalies')
   @ApiOperation({ summary: 'Get unresolved anomalies' })
-  @ApiResponse({ status: 200, description: 'Anomalies retrieved' })
-  async getAnomalies() {
+  @ApiResponse({ status: 200, description: 'Anomalies retrieved', type: [AnomalyDto] })
+  async getAnomalies(): Promise<AnomalyDto[]> {
     return this.reconciliationService.getUnresolvedAnomalies();
   }
 
@@ -63,7 +72,11 @@ export class ReconciliationController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark an anomaly resolved/investigated' })
-  @ApiResponse({ status: 200, description: 'Anomaly marked resolved' })
+  @ApiResponse({
+    status: 200,
+    description: 'Anomaly marked resolved',
+    type: ResolveAnomalyResultDto,
+  })
   @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
   @ApiBody({
     schema: {
@@ -77,7 +90,7 @@ export class ReconciliationController {
     @Param('id') id: string,
     @Body() body: { notes: string },
     @CurrentUser() user: AuthenticatedUser,
-  ) {
+  ): Promise<ResolveAnomalyResultDto> {
     await this.reconciliationService.resolveAnomaly(id, body.notes);
 
     await this.auditLogRepo.record({
