@@ -14,11 +14,13 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { type FastifyReply, type FastifyRequest } from 'fastify';
 import { AuthService, type TokenPair } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { MeResponseDto } from './dto/me-response.dto';
+import { SessionUserDto } from './dto/session-user.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { type AuthenticatedUser } from './interfaces/jwt-payload.interface';
 import { UserRepository } from '../users/repositories/user.repository';
@@ -41,13 +43,13 @@ export class AuthController {
   @UseGuards(ThrottlerGuard)
   @Throttle({ auth: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: 'Log in with email + password' })
-  @ApiResponse({ status: 200, description: 'Logged in — session cookies set' })
+  @ApiOkResponse({ description: 'Logged in — session cookies set', type: SessionUserDto })
   @ApiResponse({ status: 401, description: 'Invalid credentials, disabled, or locked account' })
   async login(
     @Body() dto: LoginDto,
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
-  ) {
+  ): Promise<SessionUserDto> {
     const { user, tokens } = await this.authService.login(dto.email, dto.password, {
       ip: req.ip,
       userAgent: req.headers['user-agent'],
@@ -106,7 +108,8 @@ export class AuthController {
   // GET /api/v1/auth/me
   @Get('me')
   @ApiOperation({ summary: 'Get the current authenticated user' })
-  async me(@CurrentUser() user: AuthenticatedUser) {
+  @ApiOkResponse({ type: MeResponseDto })
+  async me(@CurrentUser() user: AuthenticatedUser): Promise<MeResponseDto> {
     const record = await this.userRepo.findById(user.id);
     if (!record) {
       throw new UnauthorizedException('User no longer exists');
