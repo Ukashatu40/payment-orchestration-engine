@@ -22,15 +22,23 @@ import {
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
-  Version,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { InitiatePaymentRequestDto } from './dto/initiate-payment.dto';
 import { CapturePaymentRequestDto } from './dto/capture-payment.dto';
 import { RefundPaymentRequestDto } from './dto/refund-payment.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
+import { ListPaymentsQueryDto } from './dto/list-payments-query.dto';
+import { type ListPaymentsResponseDto } from './dto/list-payments-response.dto';
 import { PaymentResponseDto } from './dto/payment-response.dto';
 import { RefundResponseDto } from './dto/refund-response.dto';
+import { CurrentMerchant } from '../auth/decorators/current-merchant.decorator';
+import { CurrentPrincipal } from '../auth/decorators/current-principal.decorator';
+import { type RequestPrincipal } from '../auth/interfaces/jwt-payload.interface';
+import { UserRole, TransactionState, PaymentGateway } from '../../common/enums';
+import { Transaction } from './entities/transaction.entity';
 
 @Controller({ path: 'payments', version: '1' })
 export class TransactionsController {
@@ -42,8 +50,10 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Initiate a new payment' })
   @ApiHeader({
     name: 'x-merchant-id',
-    required: true,
-    description: 'Merchant UUID',
+    required: false,
+    description:
+      'Merchant UUID — only honored for legacy API-key callers. Ignored for ' +
+      'user-session (JWT) callers, whose merchant is derived from their session.',
   })
   @ApiHeader({
     name: 'idempotency-key',
@@ -52,7 +62,7 @@ export class TransactionsController {
   })
   @ApiResponse({ status: 201, description: 'Payment initiated successfully' })
   @ApiResponse({ status: 400, description: 'Validation error' })
-  @ApiResponse({ status: 401, description: 'Invalid or missing API key' })
+  @ApiResponse({ status: 401, description: 'Invalid or missing credentials' })
   @ApiResponse({
     status: 409,
     description: 'Idempotency conflict — request in progress',
@@ -60,9 +70,9 @@ export class TransactionsController {
   @ApiResponse({ status: 503, description: 'No gateway available' })
   async initiatePayment(
     @Body() body: InitiatePaymentRequestDto,
-    @Headers('x-merchant-id') merchantId: string,
-    @Headers('idempotency-key') idempotencyKey: string,
+    @CurrentMerchant() merchantId: string,
     @Req() req: any,
+    @Headers('idempotency-key') idempotencyKey: string,
     @Headers('x-mock-response') mockResponse?: string,
     @Headers('x-mock-delay-ms') mockDelayMs?: string,
     @Headers('x-mock-gateway-down') mockGatewayDown?: string,
@@ -70,8 +80,6 @@ export class TransactionsController {
     // Read traceId from request object set by TraceIdInterceptor
     // Falls back to header if interceptor hasn't run (shouldn't happen)
     const traceId = req.traceId ?? req.headers?.['x-trace-id'] ?? 'unknown';
-
-    console.log('merchantId from header:', merchantId);
 
     const transaction = await this.transactionsService.initiatePayment({
       merchantId,
@@ -98,23 +106,59 @@ export class TransactionsController {
   @Get(':id')
   @ApiOperation({ summary: 'Retrieve payment details by ID' })
   @ApiResponse({ status: 200, description: 'Payment found' })
+  @ApiResponse({ status: 403, description: 'Transaction belongs to a different merchant' })
   @ApiResponse({ status: 404, description: 'Payment not found' })
-  async getPayment(@Param('id', ParseUUIDPipe) id: string): Promise<PaymentResponseDto> {
+  async getPayment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentPrincipal() principal: RequestPrincipal,
+  ): Promise<PaymentResponseDto> {
     const transaction = await this.transactionsService.findById(id);
+    this.assertOwnership(transaction, principal);
     return PaymentResponseDto.fromEntity(transaction);
   }
 
-  // GET /api/v1/payments?merchant_order_id=xxx
+  // GET /api/v1/payments?merchant_order_id=xxx  — exact single lookup
+  // GET /api/v1/payments?state=&gateway=&from=&to=&page=&pageSize=
+  //   — paginated/filterable list (A.6.1 — this codebase previously
+  //   had no list-all endpoint, only single lookups). For merchant-role
+  //   JWTs the merchant filter is forced server-side; for internal
+  //   roles/legacy API keys it's optional (omitting it lists across
+  //   all merchants), matching the same scoping already used by the
+  //   analytics endpoints below.
   @Get()
-  async getByMerchantOrderId(
-    @Query('merchant_order_id') merchantOrderId: string,
-    @Headers('x-merchant-id') merchantId: string,
-  ): Promise<PaymentResponseDto> {
-    const transaction = await this.transactionsService.findByMerchantOrderId(
+  @ApiOperation({ summary: 'Look up a payment by merchant_order_id, or list/filter payments' })
+  @ApiQuery({ name: 'merchant_order_id', required: false })
+  @ApiQuery({ name: 'state', required: false, enum: TransactionState })
+  @ApiQuery({ name: 'gateway', required: false, enum: PaymentGateway })
+  @ApiQuery({ name: 'from', required: false, description: 'ISO 8601 date' })
+  @ApiQuery({ name: 'to', required: false, description: 'ISO 8601 date' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  async listOrGetPayments(
+    @Query('merchant_order_id') merchantOrderId: string | undefined,
+    @Query() query: ListPaymentsQueryDto,
+    @CurrentMerchant({ required: false }) merchantId: string | undefined,
+  ): Promise<PaymentResponseDto | ListPaymentsResponseDto> {
+    if (merchantOrderId) {
+      if (!merchantId) {
+        throw new BadRequestException('merchant_order_id lookup requires a resolvable merchant');
+      }
+      const transaction = await this.transactionsService.findByMerchantOrderId(
+        merchantId,
+        merchantOrderId,
+      );
+      return PaymentResponseDto.fromEntity(transaction);
+    }
+
+    return this.transactionsService.listPayments({
       merchantId,
-      merchantOrderId,
-    );
-    return PaymentResponseDto.fromEntity(transaction);
+      state: query.state,
+      gateway: query.gateway,
+      fromDate: query.from ? new Date(query.from) : undefined,
+      toDate: query.to ? new Date(query.to) : undefined,
+      page: query.page,
+      pageSize: query.pageSize,
+    });
   }
 
   // POST /api/v1/payments/:id/capture
@@ -138,15 +182,16 @@ export class TransactionsController {
   async capturePayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: CapturePaymentRequestDto,
-    @Headers('x-merchant-id') merchantId: string,
+    @CurrentPrincipal() principal: RequestPrincipal,
     @Req() req: any,
   ): Promise<PaymentResponseDto> {
+    await this.assertOwnershipById(id, principal);
     const traceId = req.traceId ?? 'unknown';
     const transaction = await this.transactionsService.capturePayment({
       transactionId: id,
       amountPaise: body.amountPaise,
       traceId,
-      triggeredBy: `merchant:${merchantId}`,
+      triggeredBy: this.describeTrigger(principal),
     });
     return PaymentResponseDto.fromEntity(transaction);
   }
@@ -159,14 +204,15 @@ export class TransactionsController {
   @ApiResponse({ status: 422, description: 'Invalid state transition' })
   async voidPayment(
     @Param('id', ParseUUIDPipe) id: string,
-    @Headers('x-merchant-id') merchantId: string,
+    @CurrentPrincipal() principal: RequestPrincipal,
     @Req() req: any,
   ): Promise<PaymentResponseDto> {
+    await this.assertOwnershipById(id, principal);
     const traceId = req.traceId ?? 'unknown';
     const transaction = await this.transactionsService.voidPayment({
       transactionId: id,
       traceId,
-      triggeredBy: `merchant:${merchantId}`,
+      triggeredBy: this.describeTrigger(principal),
     });
     return PaymentResponseDto.fromEntity(transaction);
   }
@@ -197,9 +243,10 @@ export class TransactionsController {
   async refundPayment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: RefundPaymentRequestDto,
-    @Headers('x-merchant-id') merchantId: string,
+    @CurrentPrincipal() principal: RequestPrincipal,
     @Req() req: any,
   ): Promise<PaymentResponseDto> {
+    await this.assertOwnershipById(id, principal);
     const traceId = req.traceId ?? 'unknown';
     const transaction = await this.transactionsService.refundPayment({
       transactionId: id,
@@ -207,7 +254,7 @@ export class TransactionsController {
       reason: body.reason,
       idempotencyKey: body.idempotencyKey,
       traceId,
-      triggeredBy: `merchant:${merchantId}`,
+      triggeredBy: this.describeTrigger(principal),
     });
     return PaymentResponseDto.fromEntity(transaction);
   }
@@ -217,7 +264,11 @@ export class TransactionsController {
   @ApiOperation({ summary: 'Retrieve payment timeline' })
   @ApiResponse({ status: 200, description: 'Timeline retrieved' })
   @ApiResponse({ status: 404, description: 'Payment not found' })
-  async getTimeline(@Param('id', ParseUUIDPipe) id: string) {
+  async getTimeline(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentPrincipal() principal: RequestPrincipal,
+  ) {
+    await this.assertOwnershipById(id, principal);
     return this.transactionsService.getTimeline(id);
   }
 
@@ -226,7 +277,11 @@ export class TransactionsController {
   @ApiOperation({ summary: 'List refunds for a payment' })
   @ApiResponse({ status: 200, description: 'Refunds retrieved' })
   @ApiResponse({ status: 404, description: 'Payment not found' })
-  async getRefunds(@Param('id', ParseUUIDPipe) id: string): Promise<RefundResponseDto[]> {
+  async getRefunds(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentPrincipal() principal: RequestPrincipal,
+  ): Promise<RefundResponseDto[]> {
+    await this.assertOwnershipById(id, principal);
     const refunds = await this.transactionsService.getRefunds(id);
     return refunds.map(RefundResponseDto.fromEntity);
   }
@@ -245,10 +300,13 @@ export class TransactionsController {
     required: false,
     description: 'End date for analytics (ISO 8601 format)',
   })
-  async getSuccessRate(@Query() query: AnalyticsQueryDto) {
+  async getSuccessRate(
+    @Query() query: AnalyticsQueryDto,
+    @CurrentMerchant({ required: false }) merchantId: string | undefined,
+  ) {
     const from = query.from ? new Date(query.from) : new Date(Date.now() - 86_400_000);
     const to = query.to ? new Date(query.to) : new Date();
-    return this.transactionsService.getSuccessRateAnalytics(from, to);
+    return this.transactionsService.getSuccessRateAnalytics(from, to, merchantId);
   }
 
   // GET /api/v1/analytics/volume
@@ -265,9 +323,44 @@ export class TransactionsController {
     required: false,
     description: 'End date for analytics (ISO 8601 format)',
   })
-  async getVolume(@Query() query: AnalyticsQueryDto) {
+  async getVolume(
+    @Query() query: AnalyticsQueryDto,
+    @CurrentMerchant({ required: false }) merchantId: string | undefined,
+  ) {
     const from = query.from ? new Date(query.from) : new Date(Date.now() - 86_400_000);
     const to = query.to ? new Date(query.to) : new Date();
-    return this.transactionsService.getVolumeAnalytics(from, to);
+    return this.transactionsService.getVolumeAnalytics(from, to, merchantId);
+  }
+
+  // ----------------------------------------------------------------
+  // Merchant-ownership enforcement (the A.4 fix). Internal roles
+  // (OPS_*/SUPER_ADMIN) and legacy API-key callers are unrestricted —
+  // matches pre-existing behavior for those paths. MERCHANT_* JWTs may
+  // only touch their own merchant's transactions.
+  // ----------------------------------------------------------------
+  private assertOwnership(transaction: Transaction, principal: RequestPrincipal): void {
+    if (principal.type !== 'user') return;
+    if (principal.role !== UserRole.MERCHANT_ADMIN && principal.role !== UserRole.MERCHANT_VIEWER)
+      return;
+
+    if (transaction.merchantId !== principal.merchantId) {
+      throw new ForbiddenException('This transaction does not belong to your merchant account');
+    }
+  }
+
+  private async assertOwnershipById(
+    transactionId: string,
+    principal: RequestPrincipal,
+  ): Promise<void> {
+    if (principal.type !== 'user') return;
+    if (principal.role !== UserRole.MERCHANT_ADMIN && principal.role !== UserRole.MERCHANT_VIEWER)
+      return;
+
+    const transaction = await this.transactionsService.findById(transactionId);
+    this.assertOwnership(transaction, principal);
+  }
+
+  private describeTrigger(principal: RequestPrincipal): string {
+    return principal.type === 'user' ? `user:${principal.id}` : 'api_key';
   }
 }

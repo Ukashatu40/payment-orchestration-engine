@@ -15,8 +15,10 @@ import { GatewayHealthService } from './health/gateway-health.service';
 import { GatewayRouterService } from './router/gateway-router.service';
 import { GatewayConfigRepository } from './repositories/gateway-config.repository';
 import { GatewaysController } from './gateways.controller';
+import { UsersModule } from '../users/users.module';
 
 @Module({
+  imports: [UsersModule],
   providers: [
     // Adapters
     RazorpayAdapter,

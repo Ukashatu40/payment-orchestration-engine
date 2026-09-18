@@ -18,7 +18,11 @@ import { WebhookSignatureService } from './verification/webhook-signature.servic
 import { WebhookQueueService } from './webhook-queue.service';
 import { WebhookProcessorService } from './webhook-processor.service';
 import { GatewayConfigRepository } from '../gateways/repositories/gateway-config.repository';
-import { PaymentGateway } from '../../common/enums';
+import { PaymentGateway, UserRole } from '../../common/enums';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
+import { UserAuditLogRepository } from '../users/repositories/user-audit-log.repository';
 
 @ApiTags('webhooks')
 @ApiSecurity('X-API-Key')
@@ -29,6 +33,7 @@ export class WebhooksController {
     private readonly queueService: WebhookQueueService,
     private readonly processorService: WebhookProcessorService,
     private readonly gatewayConfigRepo: GatewayConfigRepository,
+    private readonly auditLogRepo: UserAuditLogRepository,
   ) {}
 
   // POST /api/v1/webhooks/razorpay
@@ -112,12 +117,27 @@ export class WebhooksController {
   }
 
   // POST /api/v1/webhooks/dlq/:id/replay
+  // Dangerous: re-triggers processing of a previously-failed webhook
+  // event. Requires a real user session with an admin role.
   @Post('dlq/:id/replay')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Replay a failed webhook' })
   @ApiResponse({ status: 200, description: 'Webhook replayed' })
-  async replayDLQ(@Param('id') id: string): Promise<{ replayed: true }> {
+  @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
+  async replayDLQ(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ replayed: true }> {
     await this.queueService.replayFromDLQ(id);
+
+    await this.auditLogRepo.record({
+      actorUserId: user.id,
+      action: 'WEBHOOK_REPLAYED',
+      targetType: 'webhook_queue',
+      targetId: id,
+    });
+
     return { replayed: true };
   }
 

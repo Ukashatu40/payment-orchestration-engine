@@ -13,7 +13,9 @@ import { CircuitBreakerService } from '../gateways/circuit-breaker/circuit-break
 import { GatewayHealthService } from '../gateways/health/gateway-health.service';
 import { Transaction } from './entities/transaction.entity';
 import { TransactionStateLog } from './entities/transaction-state-log.entity';
-import { RefundState, TransactionState } from '../../common/enums';
+import { RefundState, TransactionState, PaymentGateway } from '../../common/enums';
+import { PaymentResponseDto } from './dto/payment-response.dto';
+import { ListPaymentsResponseDto } from './dto/list-payments-response.dto';
 import { GatewayTimeoutException, GatewayUnavailableException } from '../../common/exceptions';
 import {
   InitiatePaymentDto,
@@ -541,14 +543,40 @@ export class TransactionsService {
   }
 
   // ----------------------------------------------------------------
-  // Analytics
+  // GET /api/v1/payments (list, no merchant_order_id) — A.6.1
+  // merchantId, when passed, is a hard filter — callers are
+  // responsible for always supplying it for merchant-scoped callers
+  // (see transactions.controller.ts's use of @CurrentMerchant).
   // ----------------------------------------------------------------
-  async getSuccessRateAnalytics(fromDate: Date, toDate: Date) {
-    return this.transactionRepo.getSuccessRateByGateway(fromDate, toDate);
+  async listPayments(filters: {
+    merchantId?: string;
+    state?: TransactionState;
+    gateway?: PaymentGateway;
+    fromDate?: Date;
+    toDate?: Date;
+    page: number;
+    pageSize: number;
+  }): Promise<ListPaymentsResponseDto> {
+    const { data, total } = await this.transactionRepo.findPaginated(filters);
+
+    return {
+      data: data.map((txn) => PaymentResponseDto.fromEntity(txn)),
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total,
+      totalPages: Math.ceil(total / filters.pageSize),
+    };
   }
 
-  async getVolumeAnalytics(fromDate: Date, toDate: Date) {
-    return this.transactionRepo.getVolumeByDay(fromDate, toDate);
+  // ----------------------------------------------------------------
+  // Analytics
+  // ----------------------------------------------------------------
+  async getSuccessRateAnalytics(fromDate: Date, toDate: Date, merchantId?: string) {
+    return this.transactionRepo.getSuccessRateByGateway(fromDate, toDate, merchantId);
+  }
+
+  async getVolumeAnalytics(fromDate: Date, toDate: Date, merchantId?: string) {
+    return this.transactionRepo.getVolumeByDay(fromDate, toDate, merchantId);
   }
 
   // ----------------------------------------------------------------

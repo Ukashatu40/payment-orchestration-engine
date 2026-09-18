@@ -57,6 +57,48 @@ export class TransactionRepository {
   }
 
   // ----------------------------------------------------------------
+  // Paginated, filterable list — backs GET /payments (no filters).
+  // merchantId is a hard filter, not optional-in-name-only: callers
+  // (transactions.service.ts) are responsible for always supplying it
+  // for merchant-scoped callers and omitting it only for internal
+  // roles/API-key callers who are allowed to see across merchants.
+  // ----------------------------------------------------------------
+  async findPaginated(filters: {
+    merchantId?: string;
+    state?: TransactionState;
+    gateway?: PaymentGateway;
+    fromDate?: Date;
+    toDate?: Date;
+    page: number;
+    pageSize: number;
+  }): Promise<{ data: Transaction[]; total: number }> {
+    const qb = this.repo.createQueryBuilder('txn');
+
+    if (filters.merchantId) {
+      qb.andWhere('txn.merchantId = :merchantId', { merchantId: filters.merchantId });
+    }
+    if (filters.state) {
+      qb.andWhere('txn.state = :state', { state: filters.state });
+    }
+    if (filters.gateway) {
+      qb.andWhere('txn.gateway = :gateway', { gateway: filters.gateway });
+    }
+    if (filters.fromDate) {
+      qb.andWhere('txn.createdAt >= :fromDate', { fromDate: filters.fromDate });
+    }
+    if (filters.toDate) {
+      qb.andWhere('txn.createdAt <= :toDate', { toDate: filters.toDate });
+    }
+
+    qb.orderBy('txn.createdAt', 'DESC')
+      .skip((filters.page - 1) * filters.pageSize)
+      .take(filters.pageSize);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total };
+  }
+
+  // ----------------------------------------------------------------
   // Pessimistic read lock — used by state machine before transition.
   // Caller must be inside an active EntityManager transaction.
   // Satisfies A8.1 — lock acquired before state validation.
@@ -93,8 +135,9 @@ export class TransactionRepository {
   async getSuccessRateByGateway(
     fromDate: Date,
     toDate: Date,
+    merchantId?: string,
   ): Promise<{ gateway: string; successRate: number; total: number }[]> {
-    const result = await this.repo
+    const qb = this.repo
       .createQueryBuilder('txn')
       .select('txn.gateway', 'gateway')
       .addSelect('COUNT(*)', 'total')
@@ -107,8 +150,13 @@ export class TransactionRepository {
         toDate,
       })
       .andWhere('txn.gateway IS NOT NULL')
-      .groupBy('txn.gateway')
-      .getRawMany();
+      .groupBy('txn.gateway');
+
+    if (merchantId) {
+      qb.andWhere('txn.merchantId = :merchantId', { merchantId });
+    }
+
+    const result = await qb.getRawMany();
 
     return result.map((row) => ({
       gateway: row.gateway,
@@ -120,8 +168,9 @@ export class TransactionRepository {
   async getVolumeByDay(
     fromDate: Date,
     toDate: Date,
+    merchantId?: string,
   ): Promise<{ date: string; count: number; totalPaise: string }[]> {
-    return this.repo
+    const qb = this.repo
       .createQueryBuilder('txn')
       .select('DATE(txn.createdAt)', 'date')
       .addSelect('COUNT(*)', 'count')
@@ -131,7 +180,12 @@ export class TransactionRepository {
         toDate,
       })
       .groupBy('DATE(txn.createdAt)')
-      .orderBy('DATE(txn.createdAt)', 'ASC')
-      .getRawMany();
+      .orderBy('DATE(txn.createdAt)', 'ASC');
+
+    if (merchantId) {
+      qb.andWhere('txn.merchantId = :merchantId', { merchantId });
+    }
+
+    return qb.getRawMany();
   }
 }

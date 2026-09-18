@@ -8,9 +8,10 @@ import { ReconciliationLogRepository } from './repositories/reconciliation-log.r
 import { TransactionsModule } from '../transactions/transactions.module';
 import { GatewaysModule } from '../gateways/gateways.module';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
-  imports: [TransactionsModule, GatewaysModule, IdempotencyModule],
+  imports: [TransactionsModule, GatewaysModule, IdempotencyModule, UsersModule],
   providers: [ReconciliationService, ReconciliationScheduler, ReconciliationLogRepository],
   controllers: [ReconciliationController],
   exports: [ReconciliationService],

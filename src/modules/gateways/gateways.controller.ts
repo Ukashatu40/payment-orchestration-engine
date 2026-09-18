@@ -9,7 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
-  Version,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -25,7 +25,11 @@ import { GatewayHealthService } from './health/gateway-health.service';
 import { DataSource } from 'typeorm';
 import { RoutingConfig } from './entities/routing-config.entity';
 import { UpdateRoutingConfigDto } from './dto/update-routing-config.dto';
-import { PaymentGateway } from '../../common/enums';
+import { PaymentGateway, UserRole } from '../../common/enums';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
+import { UserAuditLogRepository } from '../users/repositories/user-audit-log.repository';
 
 @ApiTags('gateways')
 @ApiSecurity('X-API-Key')
@@ -36,6 +40,7 @@ export class GatewaysController {
     private readonly circuitBreaker: CircuitBreakerService,
     private readonly healthService: GatewayHealthService,
     private readonly dataSource: DataSource,
+    private readonly auditLogRepo: UserAuditLogRepository,
   ) {}
 
   // GET /api/v1/gateways
@@ -91,9 +96,15 @@ export class GatewaysController {
   }
 
   // PUT /api/v1/gateways/:name/config
+  // Dangerous, high-blast-radius: can disable a live payment gateway.
+  // Requires a real user session with an admin role — never reachable
+  // via the legacy API key (RolesGuard rejects an "apiKey" principal
+  // outright, see roles.guard.ts).
   @Put(':name/config')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
   @ApiOperation({ summary: 'Update configuration for a payment gateway' })
   @ApiResponse({ status: 200, description: 'Configuration updated' })
+  @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
   @ApiParam({
     name: 'name',
     enum: PaymentGateway,
@@ -116,12 +127,21 @@ export class GatewaysController {
   async updateGatewayConfig(
     @Param('name') name: string,
     @Body() body: Partial<{ isEnabled: boolean; cbFailureThreshold: number }>,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     const gateway = name.toUpperCase() as PaymentGateway;
     await this.gatewayConfigRepo.updateConfig(gateway, body);
 
     // Reload circuit breaker config from DB without redeployment (A3.3)
     await this.circuitBreaker.loadConfigs();
+
+    await this.auditLogRepo.record({
+      actorUserId: user.id,
+      action: 'GATEWAY_CONFIG_CHANGED',
+      targetType: 'gateway',
+      targetId: gateway,
+      metadata: body,
+    });
 
     return { updated: true, gateway };
   }
@@ -137,9 +157,14 @@ export class GatewaysController {
   }
 
   // PUT /api/v1/routing/config
+  // Dangerous, high-blast-radius: live-affects which gateway every
+  // future transaction routes to. Same admin-role requirement as
+  // gateway config above.
   @Put('/routing/config')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
   @ApiOperation({ summary: 'Update routing configuration' })
   @ApiResponse({ status: 200, description: 'Routing configuration updated' })
+  @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -160,7 +185,10 @@ export class GatewaysController {
     },
   })
   @HttpCode(HttpStatus.OK)
-  async updateRoutingConfig(@Body() body: UpdateRoutingConfigDto) {
+  async updateRoutingConfig(
+    @Body() body: UpdateRoutingConfigDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     // Validate weights sum to 1.0
     const sum =
       body.weightSuccessRate +
@@ -170,10 +198,20 @@ export class GatewaysController {
       body.weightFit;
 
     if (Math.abs(sum - 1.0) > 0.001) {
-      throw new Error(`Routing weights must sum to 1.0, got ${sum}`);
+      // A plain Error here previously fell through to the global
+      // filter's generic 500 branch — this is a client input error.
+      throw new BadRequestException(`Routing weights must sum to 1.0, got ${sum}`);
     }
 
     await this.dataSource.getRepository(RoutingConfig).update({ configKey: 'default' }, body);
+
+    await this.auditLogRepo.record({
+      actorUserId: user.id,
+      action: 'ROUTING_CONFIG_CHANGED',
+      targetType: 'routing_config',
+      targetId: 'default',
+      metadata: body as unknown as Record<string, unknown>,
+    });
 
     return { updated: true };
   }

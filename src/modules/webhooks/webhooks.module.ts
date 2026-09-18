@@ -9,9 +9,10 @@ import { ProcessedWebhookEventRepository } from './repositories/processed-webhoo
 import { WebhooksController } from './webhooks.controller';
 import { TransactionsModule } from '../transactions/transactions.module';
 import { GatewaysModule } from '../gateways/gateways.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
-  imports: [TransactionsModule, GatewaysModule],
+  imports: [TransactionsModule, GatewaysModule, UsersModule],
   providers: [
     WebhookSignatureService,
     WebhookQueueService,

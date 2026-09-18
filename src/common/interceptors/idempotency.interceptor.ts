@@ -27,8 +27,10 @@ export class IdempotencyKeyInterceptor implements NestInterceptor {
       return next.handle();
     }
 
-    // Health and reconciliation trigger endpoints are exempt
-    const exemptPaths = ['/health', '/reconciliation/trigger'];
+    // Health, reconciliation trigger, and auth endpoints are exempt —
+    // login/refresh/logout are POST but aren't payment mutations and
+    // have their own replay/rotation protections (see auth.service.ts).
+    const exemptPaths = ['/health', '/reconciliation/trigger', '/auth/'];
     if (exemptPaths.some((p) => request.url.includes(p))) {
       return next.handle();
     }

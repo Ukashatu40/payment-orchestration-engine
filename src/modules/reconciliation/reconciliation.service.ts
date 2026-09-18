@@ -275,4 +275,11 @@ export class ReconciliationService {
   async getUnresolvedAnomalies(): Promise<ReconciliationLog[]> {
     return this.reconciliationLogRepo.findUnresolved();
   }
+
+  // Marks an anomaly resolved/investigated — ops has had no way to
+  // acknowledge these before; getUnresolvedAnomalies() was previously
+  // the only way to interact with them.
+  async resolveAnomaly(id: string, notes: string): Promise<void> {
+    await this.reconciliationLogRepo.markResolved(id, notes);
+  }
 }

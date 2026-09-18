@@ -1,22 +1,43 @@
 // src/modules/reconciliation/reconciliation.controller.ts
 
-import { Controller, Post, Get, Param, HttpCode, HttpStatus, Version } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiSecurity } from '@nestjs/swagger';
+import { Controller, Post, Get, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiBody } from '@nestjs/swagger';
 import { ReconciliationService } from './reconciliation.service';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
+import { UserRole } from '../../common/enums';
+import { UserAuditLogRepository } from '../users/repositories/user-audit-log.repository';
 
 @ApiTags('reconciliation')
 @ApiSecurity('X-API-Key')
 @Controller({ path: 'reconciliation', version: '1' })
 export class ReconciliationController {
-  constructor(private readonly reconciliationService: ReconciliationService) {}
+  constructor(
+    private readonly reconciliationService: ReconciliationService,
+    private readonly auditLogRepo: UserAuditLogRepository,
+  ) {}
 
   // POST /api/v1/reconciliation/trigger
+  // Dangerous: kicks off a full reconciliation batch on demand.
+  // Requires a real user session with an admin role.
   @Post('trigger')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Trigger reconciliation process' })
   @ApiResponse({ status: 200, description: 'Reconciliation triggered' })
-  async triggerReconciliation() {
-    return this.reconciliationService.run();
+  @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
+  async triggerReconciliation(@CurrentUser() user: AuthenticatedUser) {
+    const result = await this.reconciliationService.run();
+
+    await this.auditLogRepo.record({
+      actorUserId: user.id,
+      action: 'RECONCILIATION_TRIGGERED',
+      targetType: 'reconciliation_run',
+      targetId: result.runId,
+    });
+
+    return result;
   }
 
   // GET /api/v1/reconciliation/reports/:run_id
@@ -33,5 +54,40 @@ export class ReconciliationController {
   @ApiResponse({ status: 200, description: 'Anomalies retrieved' })
   async getAnomalies() {
     return this.reconciliationService.getUnresolvedAnomalies();
+  }
+
+  // POST /api/v1/reconciliation/anomalies/:id/resolve
+  // Ops workflow addition — anomalies were previously read-only via
+  // the API (only auto-resolution during a run could clear one).
+  @Post('anomalies/:id/resolve')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mark an anomaly resolved/investigated' })
+  @ApiResponse({ status: 200, description: 'Anomaly marked resolved' })
+  @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { notes: { type: 'string' } },
+      required: ['notes'],
+      example: { notes: 'Confirmed with gateway support — settled, false positive.' },
+    },
+  })
+  async resolveAnomaly(
+    @Param('id') id: string,
+    @Body() body: { notes: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.reconciliationService.resolveAnomaly(id, body.notes);
+
+    await this.auditLogRepo.record({
+      actorUserId: user.id,
+      action: 'ANOMALY_RESOLVED',
+      targetType: 'reconciliation_log',
+      targetId: id,
+      metadata: { notes: body.notes },
+    });
+
+    return { resolved: true };
   }
 }
