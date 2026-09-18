@@ -7,3 +7,4 @@ export * from './payment-method.enum';
 export * from './webhook-status.enum';
 export * from './refund-state.enum';
 export * from './discrepancy-type.enum';
+export * from './user-role.enum';

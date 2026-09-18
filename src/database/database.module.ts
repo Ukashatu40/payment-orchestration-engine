@@ -18,6 +18,10 @@ import { AddNgnGatewayEnumValues1748000000011 } from './migrations/011-add-ngn-g
 import { AddNgnPaymentMethodEnumValues1748000000012 } from './migrations/012-add-ngn-payment-method-enum-values';
 import { AddGatewayConfigSupportedCurrencies1748000000013 } from './migrations/013-add-gateway-config-supported-currencies';
 import { SeedNgnGatewayConfig1748000000014 } from './migrations/014-seed-ngn-gateway-config';
+import { CreateUsers1748000000015 } from './migrations/015-create-users';
+import { CreateRefreshTokens1748000000016 } from './migrations/016-create-refresh-tokens';
+import { CreateUserAuditLog1748000000017 } from './migrations/017-create-user-audit-log';
+import { SeedInitialSuperAdmin1748000000018 } from './migrations/018-seed-initial-super-admin';
 import { Transaction } from '../modules/transactions/entities/transaction.entity';
 import { TransactionStateLog } from '../modules/transactions/entities/transaction-state-log.entity';
 import { Refund } from '../modules/transactions/entities/refund.entity';
@@ -29,6 +33,9 @@ import { GatewayRoute } from '../modules/gateways/entities/gateway-route.entity'
 import { GatewayHealthMetrics } from '../modules/gateways/entities/gateway-health-metrics.entity';
 import { RoutingConfig } from '../modules/gateways/entities/routing-config.entity';
 import { ReconciliationLog } from '../modules/reconciliation/entities/reconciliation-log.entity';
+import { User } from '../modules/users/entities/user.entity';
+import { RefreshToken } from '../modules/users/entities/refresh-token.entity';
+import { UserAuditLog } from '../modules/users/entities/user-audit-log.entity';
 
 @Global()
 @Module({
@@ -54,6 +61,9 @@ import { ReconciliationLog } from '../modules/reconciliation/entities/reconcilia
           GatewayHealthMetrics,
           RoutingConfig,
           ReconciliationLog,
+          User,
+          RefreshToken,
+          UserAuditLog,
         ],
         migrations: [
           CreateTransactions1748000000001,
@@ -70,6 +80,10 @@ import { ReconciliationLog } from '../modules/reconciliation/entities/reconcilia
           AddNgnPaymentMethodEnumValues1748000000012,
           AddGatewayConfigSupportedCurrencies1748000000013,
           SeedNgnGatewayConfig1748000000014,
+          CreateUsers1748000000015,
+          CreateRefreshTokens1748000000016,
+          CreateUserAuditLog1748000000017,
+          SeedInitialSuperAdmin1748000000018,
         ],
         migrationsRun: true,
         // TypeORM's default ('all') wraps every pending migration in a
