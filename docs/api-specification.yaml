@@ -12,6 +12,153 @@ paths:
       summary: Check application health
       tags:
         - health
+  /api/v1/users:
+    get:
+      operationId: UsersController_listUsers_v1
+      parameters:
+        - name: pageSize
+          required: false
+          in: query
+          schema:
+            type: number
+        - name: page
+          required: false
+          in: query
+          schema:
+            type: number
+        - name: status
+          required: false
+          in: query
+          schema:
+            enum:
+              - ACTIVE
+              - DISABLED
+            type: string
+        - name: role
+          required: false
+          in: query
+          schema:
+            enum:
+              - SUPER_ADMIN
+              - OPS_ADMIN
+              - OPS_VIEWER
+              - MERCHANT_ADMIN
+              - MERCHANT_VIEWER
+            type: string
+      responses:
+        '200':
+          description: Users retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListUsersResponseDto'
+      security: &ref_0
+        - X-API-Key: []
+      summary: List users
+      tags: &ref_1
+        - users
+    post:
+      operationId: UsersController_createUser_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserDto'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummaryDto'
+        '403':
+          description: Requires SUPER_ADMIN
+        '409':
+          description: Email already in use
+      security: *ref_0
+      summary: Create a user
+      tags: *ref_1
+  /api/v1/users/{id}:
+    get:
+      operationId: UsersController_getUser_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummaryDto'
+        '404':
+          description: User not found
+      security: *ref_0
+      summary: Get a user by id
+      tags: *ref_1
+  /api/v1/users/{id}/role:
+    put:
+      operationId: UsersController_updateUserRole_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRoleDto'
+      responses:
+        '200':
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummaryDto'
+        '403':
+          description: Requires SUPER_ADMIN
+        '404':
+          description: User not found
+      security: *ref_0
+      summary: Change a user's role
+      tags: *ref_1
+  /api/v1/users/{id}/status:
+    put:
+      operationId: UsersController_updateUserStatus_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserStatusDto'
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummaryDto'
+        '403':
+          description: Requires SUPER_ADMIN
+        '404':
+          description: User not found
+      security: *ref_0
+      summary: Enable or disable a user's account
+      tags: *ref_1
   /api/v1/auth/login:
     post:
       operationId: AuthController_login_v1
@@ -32,7 +179,7 @@ paths:
         '401':
           description: Invalid credentials, disabled, or locked account
       summary: Log in with email + password
-      tags: &ref_0
+      tags: &ref_2
         - auth
   /api/v1/auth/refresh:
     post:
@@ -42,7 +189,7 @@ paths:
         '200':
           description: ''
       summary: Rotate the refresh token and issue a new access token
-      tags: *ref_0
+      tags: *ref_2
   /api/v1/auth/logout:
     post:
       operationId: AuthController_logout_v1
@@ -51,7 +198,7 @@ paths:
         '200':
           description: ''
       summary: Log out — revokes the current refresh token
-      tags: *ref_0
+      tags: *ref_2
   /api/v1/auth/me:
     get:
       operationId: AuthController_me_v1
@@ -64,7 +211,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/MeResponseDto'
       summary: Get the current authenticated user
-      tags: *ref_0
+      tags: *ref_2
   /api/v1/auth/sessions:
     get:
       operationId: AuthController_sessions_v1
@@ -73,7 +220,7 @@ paths:
         '200':
           description: ''
       summary: List active sessions (refresh tokens) for the current user
-      tags: *ref_0
+      tags: *ref_2
   /api/v1/auth/sessions/{id}:
     delete:
       operationId: AuthController_revokeSession_v1
@@ -87,7 +234,7 @@ paths:
         '200':
           description: ''
       summary: Revoke a specific session (must belong to the current user)
-      tags: *ref_0
+      tags: *ref_2
   /api/v1/gateways:
     get:
       operationId: GatewaysController_listGateways_v1
@@ -95,10 +242,16 @@ paths:
       responses:
         '200':
           description: List of payment gateways retrieved
-      security: &ref_1
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GatewaySummaryDto'
+      security: &ref_3
         - X-API-Key: []
       summary: List all payment gateways
-      tags: &ref_2
+      tags: &ref_4
         - gateways
   /api/v1/gateways/{name}/health:
     get:
@@ -108,13 +261,26 @@ paths:
           required: true
           in: path
           schema:
+            enum:
+              - RAZORPAY
+              - STRIPE
+              - PAYU
+              - UPI
+              - PAYSTACK
+              - FLUTTERWAVE
+              - INTERSWITCH
+              - OPAY
             type: string
       responses:
         '200':
           description: Health status retrieved
-      security: *ref_1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayHealthDto'
+      security: *ref_3
       summary: Get health status of a payment gateway
-      tags: *ref_2
+      tags: *ref_4
   /api/v1/gateways/{name}/metrics:
     get:
       operationId: GatewaysController_getGatewayMetrics_v1
@@ -123,13 +289,28 @@ paths:
           required: true
           in: path
           schema:
+            enum:
+              - RAZORPAY
+              - STRIPE
+              - PAYU
+              - UPI
+              - PAYSTACK
+              - FLUTTERWAVE
+              - INTERSWITCH
+              - OPAY
             type: string
       responses:
         '200':
           description: Metrics retrieved
-      security: *ref_1
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GatewayMetricsDto'
+      security: *ref_3
       summary: Get metrics for a payment gateway
-      tags: *ref_2
+      tags: *ref_4
   /api/v1/gateways/{name}/config:
     put:
       operationId: GatewaysController_updateGatewayConfig_v1
@@ -159,20 +340,26 @@ paths:
                 isEnabled:
                   type: boolean
                 cbFailureThreshold:
-                  type: number
-                  minimum: 0
-                  maximum: 1
+                  type: integer
+                  minimum: 1
+                  description: >-
+                    Consecutive failure count that trips the circuit breaker
+                    open
               example:
                 isEnabled: true
-                cbFailureThreshold: 0.3
+                cbFailureThreshold: 5
       responses:
         '200':
           description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayConfigUpdateResultDto'
         '403':
           description: Requires SUPER_ADMIN or OPS_ADMIN
-      security: *ref_1
+      security: *ref_3
       summary: Update configuration for a payment gateway
-      tags: *ref_2
+      tags: *ref_4
   /api/v1/gateways/routing/config:
     get:
       operationId: GatewaysController_getRoutingConfig_v1
@@ -180,9 +367,13 @@ paths:
       responses:
         '200':
           description: Routing configuration retrieved
-      security: *ref_1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutingConfigResponseDto'
+      security: *ref_3
       summary: Get current routing configuration
-      tags: *ref_2
+      tags: *ref_4
     put:
       operationId: GatewaysController_updateRoutingConfig_v1
       parameters: []
@@ -222,11 +413,15 @@ paths:
       responses:
         '200':
           description: Routing configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutingConfigResponseDto'
         '403':
           description: Requires SUPER_ADMIN or OPS_ADMIN
-      security: *ref_1
+      security: *ref_3
       summary: Update routing configuration
-      tags: *ref_2
+      tags: *ref_4
   /api/v1/payments:
     post:
       operationId: TransactionsController_initiatePayment_v1
@@ -279,7 +474,7 @@ paths:
         '503':
           description: No gateway available
       summary: Initiate a new payment
-      tags: &ref_3
+      tags: &ref_5
         - Transactions
     get:
       operationId: TransactionsController_listOrGetPayments_v1
@@ -297,13 +492,15 @@ paths:
         - name: to
           required: false
           in: query
-          description: ISO 8601 date
-          schema: {}
+          schema:
+            format: date-time
+            type: string
         - name: from
           required: false
           in: query
-          description: ISO 8601 date
-          schema: {}
+          schema:
+            format: date-time
+            type: string
         - name: gateway
           required: false
           in: query
@@ -353,9 +550,16 @@ paths:
           schema: {}
       responses:
         '200':
-          description: ''
+          description: >-
+            Paginated list (default — omit merchant_order_id). When
+            merchant_order_id is passed, the response is a single
+            PaymentResponseDto instead of this page shape.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListPaymentsResponseDto'
       summary: Look up a payment by merchant_order_id, or list/filter payments
-      tags: *ref_3
+      tags: *ref_5
   /api/v1/payments/{id}:
     get:
       operationId: TransactionsController_getPayment_v1
@@ -368,12 +572,16 @@ paths:
       responses:
         '200':
           description: Payment found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponseDto'
         '403':
           description: Transaction belongs to a different merchant
         '404':
           description: Payment not found
       summary: Retrieve payment details by ID
-      tags: *ref_3
+      tags: *ref_5
   /api/v1/payments/{id}/capture:
     post:
       operationId: TransactionsController_capturePayment_v1
@@ -399,10 +607,14 @@ paths:
       responses:
         '200':
           description: Payment captured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponseDto'
         '422':
           description: Invalid state transition
       summary: Capture an authorised payment
-      tags: *ref_3
+      tags: *ref_5
   /api/v1/payments/{id}/void:
     post:
       operationId: TransactionsController_voidPayment_v1
@@ -415,10 +627,14 @@ paths:
       responses:
         '200':
           description: Payment voided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponseDto'
         '422':
           description: Invalid state transition
       summary: Void an authorised payment
-      tags: *ref_3
+      tags: *ref_5
   /api/v1/payments/{id}/refund:
     post:
       operationId: TransactionsController_refundPayment_v1
@@ -454,10 +670,14 @@ paths:
       responses:
         '200':
           description: Payment refunded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponseDto'
         '422':
           description: Invalid state transition
       summary: Refund a completed payment
-      tags: *ref_3
+      tags: *ref_5
   /api/v1/payments/{id}/timeline:
     get:
       operationId: TransactionsController_getTimeline_v1
@@ -470,10 +690,16 @@ paths:
       responses:
         '200':
           description: Timeline retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimelineEntryDto'
         '404':
           description: Payment not found
       summary: Retrieve payment timeline
-      tags: *ref_3
+      tags: *ref_5
   /api/v1/payments/{id}/refunds:
     get:
       operationId: TransactionsController_getRefunds_v1
@@ -486,10 +712,16 @@ paths:
       responses:
         '200':
           description: Refunds retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RefundResponseDto'
         '404':
           description: Payment not found
       summary: List refunds for a payment
-      tags: *ref_3
+      tags: *ref_5
   /api/v1/payments/analytics/success-rate:
     get:
       operationId: TransactionsController_getSuccessRate_v1
@@ -498,17 +730,27 @@ paths:
           required: false
           in: query
           description: End date for analytics (ISO 8601 format)
-          schema: {}
+          schema:
+            format: date-time
+            type: string
         - name: from
           required: false
           in: query
           description: Start date for analytics (ISO 8601 format)
-          schema: {}
+          schema:
+            format: date-time
+            type: string
       responses:
         '200':
           description: Success rate analytics retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SuccessRateByGatewayDto'
       summary: Get payment success rate analytics
-      tags: *ref_3
+      tags: *ref_5
   /api/v1/payments/analytics/volume:
     get:
       operationId: TransactionsController_getVolume_v1
@@ -517,17 +759,27 @@ paths:
           required: false
           in: query
           description: End date for analytics (ISO 8601 format)
-          schema: {}
+          schema:
+            format: date-time
+            type: string
         - name: from
           required: false
           in: query
           description: Start date for analytics (ISO 8601 format)
-          schema: {}
+          schema:
+            format: date-time
+            type: string
       responses:
         '200':
           description: Volume analytics retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VolumeByDayDto'
       summary: Get payment volume analytics
-      tags: *ref_3
+      tags: *ref_5
   /api/v1/webhooks/razorpay:
     post:
       operationId: WebhooksController_razorpayWebhook_v1
@@ -535,10 +787,10 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: &ref_4
+      security: &ref_6
         - X-API-Key: []
       summary: Handle Razorpay webhook
-      tags: &ref_5
+      tags: &ref_7
         - webhooks
   /api/v1/webhooks/stripe:
     post:
@@ -547,9 +799,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_4
+      security: *ref_6
       summary: Handle Stripe webhook
-      tags: *ref_5
+      tags: *ref_7
   /api/v1/webhooks/payu:
     post:
       operationId: WebhooksController_payuWebhook_v1
@@ -557,9 +809,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_4
+      security: *ref_6
       summary: Handle PayU webhook
-      tags: *ref_5
+      tags: *ref_7
   /api/v1/webhooks/upi:
     post:
       operationId: WebhooksController_upiWebhook_v1
@@ -567,9 +819,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_4
+      security: *ref_6
       summary: Handle UPI webhook
-      tags: *ref_5
+      tags: *ref_7
   /api/v1/webhooks/paystack:
     post:
       operationId: WebhooksController_paystackWebhook_v1
@@ -577,9 +829,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_4
+      security: *ref_6
       summary: Handle Paystack webhook
-      tags: *ref_5
+      tags: *ref_7
   /api/v1/webhooks/flutterwave:
     post:
       operationId: WebhooksController_flutterwaveWebhook_v1
@@ -587,9 +839,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_4
+      security: *ref_6
       summary: Handle Flutterwave webhook
-      tags: *ref_5
+      tags: *ref_7
   /api/v1/webhooks/interswitch:
     post:
       operationId: WebhooksController_interswitchWebhook_v1
@@ -597,9 +849,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_4
+      security: *ref_6
       summary: Handle Interswitch webhook
-      tags: *ref_5
+      tags: *ref_7
   /api/v1/webhooks/opay:
     post:
       operationId: WebhooksController_opayWebhook_v1
@@ -607,24 +859,39 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_4
+      security: *ref_6
       summary: Handle Opay webhook
-      tags: *ref_5
+      tags: *ref_7
   /api/v1/webhooks/dlq:
     get:
       operationId: WebhooksController_getDLQ_v1
       parameters:
         - name: gateway
-          required: true
+          required: false
           in: query
           schema:
+            enum:
+              - RAZORPAY
+              - STRIPE
+              - PAYU
+              - UPI
+              - PAYSTACK
+              - FLUTTERWAVE
+              - INTERSWITCH
+              - OPAY
             type: string
       responses:
         '200':
           description: Failed webhooks retrieved
-      security: *ref_4
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebhookQueueEntryDto'
+      security: *ref_6
       summary: Retrieve failed webhooks
-      tags: *ref_5
+      tags: *ref_7
   /api/v1/webhooks/dlq/{id}/replay:
     post:
       operationId: WebhooksController_replayDLQ_v1
@@ -637,11 +904,15 @@ paths:
       responses:
         '200':
           description: Webhook replayed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplayWebhookResultDto'
         '403':
           description: Requires SUPER_ADMIN or OPS_ADMIN
-      security: *ref_4
+      security: *ref_6
       summary: Replay a failed webhook
-      tags: *ref_5
+      tags: *ref_7
   /api/v1/reconciliation/trigger:
     post:
       operationId: ReconciliationController_triggerReconciliation_v1
@@ -649,12 +920,16 @@ paths:
       responses:
         '200':
           description: Reconciliation triggered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationRunResultDto'
         '403':
           description: Requires SUPER_ADMIN or OPS_ADMIN
-      security: &ref_6
+      security: &ref_8
         - X-API-Key: []
       summary: Trigger reconciliation process
-      tags: &ref_7
+      tags: &ref_9
         - reconciliation
   /api/v1/reconciliation/reports/{runId}:
     get:
@@ -668,9 +943,15 @@ paths:
       responses:
         '200':
           description: Report retrieved
-      security: *ref_6
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AnomalyDto'
+      security: *ref_8
       summary: Get reconciliation report
-      tags: *ref_7
+      tags: *ref_9
   /api/v1/reconciliation/anomalies:
     get:
       operationId: ReconciliationController_getAnomalies_v1
@@ -678,9 +959,15 @@ paths:
       responses:
         '200':
           description: Anomalies retrieved
-      security: *ref_6
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AnomalyDto'
+      security: *ref_8
       summary: Get unresolved anomalies
-      tags: *ref_7
+      tags: *ref_9
   /api/v1/reconciliation/anomalies/{id}/resolve:
     post:
       operationId: ReconciliationController_resolveAnomaly_v1
@@ -706,11 +993,15 @@ paths:
       responses:
         '200':
           description: Anomaly marked resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveAnomalyResultDto'
         '403':
           description: Requires SUPER_ADMIN or OPS_ADMIN
-      security: *ref_6
+      security: *ref_8
       summary: Mark an anomaly resolved/investigated
-      tags: *ref_7
+      tags: *ref_9
 info:
   title: PayFlow Orchestration Layer
   description: >-
@@ -740,6 +1031,124 @@ components:
       in: header
       name: X-API-Key
   schemas:
+    UserSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum:
+            - SUPER_ADMIN
+            - OPS_ADMIN
+            - OPS_VIEWER
+            - MERCHANT_ADMIN
+            - MERCHANT_VIEWER
+        merchantId:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - DISABLED
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+        failedLoginCount:
+          type: number
+        lockedUntil:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - role
+        - merchantId
+        - status
+        - lastLoginAt
+        - failedLoginCount
+        - lockedUntil
+        - createdAt
+    ListUsersResponseDto:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserSummaryDto'
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+      required:
+        - data
+        - page
+        - pageSize
+        - total
+        - totalPages
+    CreateUserDto:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+          minLength: 8
+        role:
+          type: string
+          enum:
+            - SUPER_ADMIN
+            - OPS_ADMIN
+            - OPS_VIEWER
+            - MERCHANT_ADMIN
+            - MERCHANT_VIEWER
+        merchantId:
+          type: string
+          format: uuid
+      required:
+        - email
+        - password
+        - role
+    UpdateUserRoleDto:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - SUPER_ADMIN
+            - OPS_ADMIN
+            - OPS_VIEWER
+            - MERCHANT_ADMIN
+            - MERCHANT_VIEWER
+        merchantId:
+          type: string
+          format: uuid
+      required:
+        - role
+    UpdateUserStatusDto:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - ACTIVE
+            - DISABLED
+      required:
+        - status
     LoginDto:
       type: object
       properties:
@@ -770,7 +1179,7 @@ components:
             - MERCHANT_ADMIN
             - MERCHANT_VIEWER
         merchantId:
-          type: object
+          type: string
           format: uuid
           nullable: true
       required:
@@ -795,7 +1204,7 @@ components:
             - MERCHANT_ADMIN
             - MERCHANT_VIEWER
         merchantId:
-          type: object
+          type: string
           format: uuid
           nullable: true
         lastLoginAt:
@@ -808,6 +1217,660 @@ components:
         - role
         - merchantId
         - lastLoginAt
+    GatewaySummaryDto:
+      type: object
+      properties:
+        gateway:
+          type: string
+          enum:
+            - RAZORPAY
+            - STRIPE
+            - PAYU
+            - UPI
+            - PAYSTACK
+            - FLUTTERWAVE
+            - INTERSWITCH
+            - OPAY
+        isEnabled:
+          type: boolean
+        healthScore:
+          type: number
+          description: 0-1 rolling health score derived from the circuit breaker
+        circuitState:
+          type: string
+          enum:
+            - CLOSED
+            - OPEN
+            - HALF_OPEN
+        supportedMethods:
+          type: array
+          items:
+            type: string
+      required:
+        - gateway
+        - isEnabled
+        - healthScore
+        - supportedMethods
+    CircuitBreakerEntryDto:
+      type: object
+      properties:
+        gateway:
+          type: string
+          enum:
+            - RAZORPAY
+            - STRIPE
+            - PAYU
+            - UPI
+            - PAYSTACK
+            - FLUTTERWAVE
+            - INTERSWITCH
+            - OPAY
+        paymentMethod:
+          type: string
+          enum:
+            - CARD_CREDIT
+            - CARD_DEBIT
+            - UPI
+            - NET_BANKING
+            - WALLET
+            - BANK_TRANSFER
+            - USSD
+            - MOBILE_MONEY
+            - VIRTUAL_ACCOUNT
+          nullable: true
+          description: null = applies to all methods
+        state:
+          type: string
+          enum:
+            - CLOSED
+            - OPEN
+            - HALF_OPEN
+        failureCount:
+          type: number
+        lastFailureAt:
+          type: string
+          format: date-time
+          nullable: true
+        openedAt:
+          type: string
+          format: date-time
+          nullable: true
+        halfOpenAt:
+          type: string
+          format: date-time
+          nullable: true
+        successCountInHalfOpen:
+          type: number
+      required:
+        - gateway
+        - paymentMethod
+        - state
+        - failureCount
+        - lastFailureAt
+        - openedAt
+        - halfOpenAt
+        - successCountInHalfOpen
+    GatewayHealthDto:
+      type: object
+      properties:
+        gateway:
+          type: string
+          enum:
+            - RAZORPAY
+            - STRIPE
+            - PAYU
+            - UPI
+            - PAYSTACK
+            - FLUTTERWAVE
+            - INTERSWITCH
+            - OPAY
+        isEnabled:
+          type: boolean
+        cbFailureThreshold:
+          type: number
+          description: Consecutive failure count that trips the circuit breaker open
+        circuitBreakerStates:
+          type: array
+          items:
+            $ref: '#/components/schemas/CircuitBreakerEntryDto'
+      required:
+        - gateway
+        - isEnabled
+        - cbFailureThreshold
+        - circuitBreakerStates
+    GatewayMetricsDto:
+      type: object
+      properties:
+        gateway:
+          type: string
+          enum:
+            - RAZORPAY
+            - STRIPE
+            - PAYU
+            - UPI
+            - PAYSTACK
+            - FLUTTERWAVE
+            - INTERSWITCH
+            - OPAY
+        successRate:
+          type: number
+          description: Fraction between 0 and 1
+        p95LatencyMs:
+          type: number
+        totalCount:
+          type: number
+      required:
+        - gateway
+        - successRate
+        - p95LatencyMs
+        - totalCount
+    GatewayConfigUpdateResultDto:
+      type: object
+      properties:
+        updated:
+          type: boolean
+        gateway:
+          type: string
+          enum:
+            - RAZORPAY
+            - STRIPE
+            - PAYU
+            - UPI
+            - PAYSTACK
+            - FLUTTERWAVE
+            - INTERSWITCH
+            - OPAY
+      required:
+        - updated
+        - gateway
+    RoutingConfigResponseDto:
+      type: object
+      properties:
+        configKey:
+          type: string
+        weightSuccessRate:
+          type: number
+        weightLatency:
+          type: number
+        weightCost:
+          type: number
+        weightHealth:
+          type: number
+        weightFit:
+          type: number
+        slidingWindowMinutes:
+          type: number
+        degradedSkipThreshold:
+          type: number
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - configKey
+        - weightSuccessRate
+        - weightLatency
+        - weightCost
+        - weightHealth
+        - weightFit
+        - slidingWindowMinutes
+        - degradedSkipThreshold
+        - updatedAt
     InitiatePaymentRequestDto:
       type: object
       properties: {}
+    PaymentResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        merchantId:
+          type: string
+          format: uuid
+        merchantOrderId:
+          type: string
+        amountPaise:
+          type: number
+          description: bigint → number for JSON serialisation
+        amountRupees:
+          type: number
+        capturedPaise:
+          type: number
+        refundedPaise:
+          type: number
+        currency:
+          type: string
+        state:
+          type: string
+          enum:
+            - CREATED
+            - ROUTE_SELECTED
+            - AUTH_INITIATED
+            - AUTHORISED
+            - AUTH_FAILED
+            - AUTH_TIMEOUT
+            - AUTH_EXPIRED
+            - CAPTURE_INITIATED
+            - CAPTURED
+            - PARTIALLY_CAPTURED
+            - CAPTURE_FAILED
+            - VOID_INITIATED
+            - VOIDED
+            - REFUND_INITIATED
+            - REFUNDED
+            - PARTIALLY_REFUNDED
+            - REFUND_FAILED
+            - SETTLED
+            - DISPUTE_OPENED
+            - DISPUTE_RESOLVED
+            - ABANDONED
+            - ROUTE_FAILED
+            - FAILED
+        paymentMethod:
+          type: string
+          enum:
+            - CARD_CREDIT
+            - CARD_DEBIT
+            - UPI
+            - NET_BANKING
+            - WALLET
+            - BANK_TRANSFER
+            - USSD
+            - MOBILE_MONEY
+            - VIRTUAL_ACCOUNT
+        gateway:
+          type: string
+          enum:
+            - RAZORPAY
+            - STRIPE
+            - PAYU
+            - UPI
+            - PAYSTACK
+            - FLUTTERWAVE
+            - INTERSWITCH
+            - OPAY
+          nullable: true
+        gatewayPaymentId:
+          type: string
+          nullable: true
+        gatewayReference:
+          type: string
+          nullable: true
+        traceId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - merchantId
+        - merchantOrderId
+        - amountPaise
+        - amountRupees
+        - capturedPaise
+        - refundedPaise
+        - currency
+        - state
+        - paymentMethod
+        - gateway
+        - gatewayPaymentId
+        - gatewayReference
+        - traceId
+        - createdAt
+        - updatedAt
+    ListPaymentsResponseDto:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentResponseDto'
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+      required:
+        - data
+        - page
+        - pageSize
+        - total
+        - totalPages
+    TimelineEntryDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fromState:
+          type: string
+          enum:
+            - CREATED
+            - ROUTE_SELECTED
+            - AUTH_INITIATED
+            - AUTHORISED
+            - AUTH_FAILED
+            - AUTH_TIMEOUT
+            - AUTH_EXPIRED
+            - CAPTURE_INITIATED
+            - CAPTURED
+            - PARTIALLY_CAPTURED
+            - CAPTURE_FAILED
+            - VOID_INITIATED
+            - VOIDED
+            - REFUND_INITIATED
+            - REFUNDED
+            - PARTIALLY_REFUNDED
+            - REFUND_FAILED
+            - SETTLED
+            - DISPUTE_OPENED
+            - DISPUTE_RESOLVED
+            - ABANDONED
+            - ROUTE_FAILED
+            - FAILED
+        toState:
+          type: string
+          enum:
+            - CREATED
+            - ROUTE_SELECTED
+            - AUTH_INITIATED
+            - AUTHORISED
+            - AUTH_FAILED
+            - AUTH_TIMEOUT
+            - AUTH_EXPIRED
+            - CAPTURE_INITIATED
+            - CAPTURED
+            - PARTIALLY_CAPTURED
+            - CAPTURE_FAILED
+            - VOID_INITIATED
+            - VOIDED
+            - REFUND_INITIATED
+            - REFUNDED
+            - PARTIALLY_REFUNDED
+            - REFUND_FAILED
+            - SETTLED
+            - DISPUTE_OPENED
+            - DISPUTE_RESOLVED
+            - ABANDONED
+            - ROUTE_FAILED
+            - FAILED
+        event:
+          type: string
+        triggeredBy:
+          type: string
+          description: e.g. 'api_server' | 'webhook_processor' | 'reconciliation_engine'
+        traceId:
+          type: string
+          format: uuid
+        gatewayReference:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - fromState
+        - toState
+        - event
+        - triggeredBy
+        - traceId
+        - gatewayReference
+        - createdAt
+    RefundResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        transactionId:
+          type: string
+          format: uuid
+        amountPaise:
+          type: number
+        amountRupees:
+          type: number
+        currency:
+          type: string
+        state:
+          type: string
+          enum:
+            - INITIATED
+            - PROCESSING
+            - COMPLETED
+            - FAILED
+            - PARTIALLY_COMPLETED
+        gateway:
+          type: string
+          enum:
+            - RAZORPAY
+            - STRIPE
+            - PAYU
+            - UPI
+            - PAYSTACK
+            - FLUTTERWAVE
+            - INTERSWITCH
+            - OPAY
+        gatewayRefundId:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - transactionId
+        - amountPaise
+        - amountRupees
+        - currency
+        - state
+        - gateway
+        - gatewayRefundId
+        - reason
+        - createdAt
+        - updatedAt
+    SuccessRateByGatewayDto:
+      type: object
+      properties:
+        gateway:
+          type: string
+        successRate:
+          type: number
+          description: Fraction between 0 and 1 (captured / total)
+        total:
+          type: number
+      required:
+        - gateway
+        - successRate
+        - total
+    VolumeByDayDto:
+      type: object
+      properties:
+        date:
+          type: string
+          description: YYYY-MM-DD
+        count:
+          type: number
+        totalPaise:
+          type: string
+          description: Sum of amount_paise for the day, as a string (bigint-safe)
+      required:
+        - date
+        - count
+        - totalPaise
+    WebhookQueueEntryDto:
+      type: object
+      properties:
+        id:
+          type: string
+          description: bigint PK, kept as a string to avoid precision loss
+        gateway:
+          type: string
+          enum:
+            - RAZORPAY
+            - STRIPE
+            - PAYU
+            - UPI
+            - PAYSTACK
+            - FLUTTERWAVE
+            - INTERSWITCH
+            - OPAY
+        eventId:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        status:
+          type: string
+          enum:
+            - PENDING
+            - PROCESSING
+            - COMPLETED
+            - FAILED
+            - DLQ
+        retryCount:
+          type: number
+        maxRetries:
+          type: number
+        nextRetryAt:
+          type: string
+          format: date-time
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - gateway
+        - eventId
+        - payload
+        - status
+        - retryCount
+        - maxRetries
+        - nextRetryAt
+        - errorMessage
+        - createdAt
+        - processedAt
+    ReplayWebhookResultDto:
+      type: object
+      properties:
+        replayed:
+          type: boolean
+      required:
+        - replayed
+    ReconciliationRunResultDto:
+      type: object
+      properties:
+        runId:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        totalChecked:
+          type: number
+        discrepanciesFound:
+          type: number
+        autoResolved:
+          type: number
+        requiresReview:
+          type: number
+      required:
+        - runId
+        - startedAt
+        - completedAt
+        - totalChecked
+        - discrepanciesFound
+        - autoResolved
+        - requiresReview
+    AnomalyDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        transactionId:
+          type: string
+          format: uuid
+          nullable: true
+        gateway:
+          type: string
+          enum:
+            - RAZORPAY
+            - STRIPE
+            - PAYU
+            - UPI
+            - PAYSTACK
+            - FLUTTERWAVE
+            - INTERSWITCH
+            - OPAY
+          nullable: true
+        discrepancyType:
+          type: string
+          enum:
+            - INTERNAL_CAPTURED_GATEWAY_FAILED
+            - INTERNAL_PENDING_GATEWAY_SUCCEEDED
+            - AMOUNT_MISMATCH
+            - STATUS_MISMATCH
+            - MISSING_IN_GATEWAY
+          nullable: true
+        internalState:
+          type: string
+          nullable: true
+        gatewayState:
+          type: string
+          nullable: true
+        requiresReview:
+          type: boolean
+        resolved:
+          type: boolean
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - runId
+        - transactionId
+        - gateway
+        - discrepancyType
+        - internalState
+        - gatewayState
+        - requiresReview
+        - resolved
+        - notes
+        - createdAt
+    ResolveAnomalyResultDto:
+      type: object
+      properties:
+        resolved:
+          type: boolean
+      required:
+        - resolved

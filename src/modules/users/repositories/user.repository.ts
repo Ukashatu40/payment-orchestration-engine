@@ -2,7 +2,8 @@
 
 import { Injectable } from '@nestjs/common';
 import { DataSource, Repository } from 'typeorm';
-import { User } from '../entities/user.entity';
+import { User, UserStatus } from '../entities/user.entity';
+import { UserRole } from '../../../common/enums';
 
 @Injectable()
 export class UserRepository {
@@ -29,6 +30,32 @@ export class UserRepository {
 
   async findAll(): Promise<User[]> {
     return this.repo.find({ order: { createdAt: 'DESC' } });
+  }
+
+  async findAllPaginated(params: {
+    role?: UserRole;
+    status?: UserStatus;
+    page: number;
+    pageSize: number;
+  }): Promise<{ data: User[]; total: number }> {
+    const qb = this.repo.createQueryBuilder('u').orderBy('u.createdAt', 'DESC');
+
+    if (params.role) {
+      qb.andWhere('u.role = :role', { role: params.role });
+    }
+    if (params.status) {
+      qb.andWhere('u.status = :status', { status: params.status });
+    }
+
+    qb.skip((params.page - 1) * params.pageSize).take(params.pageSize);
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, total };
+  }
+
+  async existsByEmail(email: string): Promise<boolean> {
+    const count = await this.repo.count({ where: { email } });
+    return count > 0;
   }
 
   async create(data: Partial<User>): Promise<User> {

@@ -21,7 +21,9 @@ export type UserAuditAction =
   | 'ROUTING_CONFIG_CHANGED'
   | 'WEBHOOK_REPLAYED'
   | 'RECONCILIATION_TRIGGERED'
-  | 'ANOMALY_RESOLVED';
+  | 'ANOMALY_RESOLVED'
+  | 'USER_CREATED'
+  | 'USER_STATUS_CHANGED';
 
 // No BaseEntity extension — append-only, no updatedAt, matching
 // transaction_state_log. The DB rule (migration 017) enforces this.

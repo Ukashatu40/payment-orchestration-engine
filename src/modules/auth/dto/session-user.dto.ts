@@ -13,6 +13,6 @@ export class SessionUserDto {
   @ApiProperty({ enum: UserRole })
   role!: UserRole;
 
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   merchantId!: string | null;
 }

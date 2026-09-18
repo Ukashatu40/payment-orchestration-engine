@@ -13,7 +13,7 @@ export class MeResponseDto {
   @ApiProperty({ enum: UserRole })
   role!: UserRole;
 
-  @ApiProperty({ format: 'uuid', nullable: true })
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
   merchantId!: string | null;
 
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
