@@ -12,7 +12,7 @@ import {
   Query,
   Version,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiSecurity } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiQuery } from '@nestjs/swagger';
 import { type FastifyRequest } from 'fastify';
 import { WebhookSignatureService } from './verification/webhook-signature.service';
 import { WebhookQueueService } from './webhook-queue.service';
@@ -23,6 +23,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { UserAuditLogRepository } from '../users/repositories/user-audit-log.repository';
+import { WebhookQueueEntryDto } from './dto/webhook-queue-entry.dto';
+import { ReplayWebhookResultDto } from './dto/replay-webhook-result.dto';
 
 @ApiTags('webhooks')
 @ApiSecurity('X-API-Key')
@@ -111,8 +113,13 @@ export class WebhooksController {
   // GET /api/v1/webhooks/dlq
   @Get('dlq')
   @ApiOperation({ summary: 'Retrieve failed webhooks' })
-  @ApiResponse({ status: 200, description: 'Failed webhooks retrieved' })
-  async getDLQ(@Query('gateway') gateway?: PaymentGateway) {
+  @ApiQuery({ name: 'gateway', required: false, enum: PaymentGateway })
+  @ApiResponse({
+    status: 200,
+    description: 'Failed webhooks retrieved',
+    type: [WebhookQueueEntryDto],
+  })
+  async getDLQ(@Query('gateway') gateway?: PaymentGateway): Promise<WebhookQueueEntryDto[]> {
     return this.queueService.getDLQ(gateway);
   }
 
@@ -123,12 +130,16 @@ export class WebhooksController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Replay a failed webhook' })
-  @ApiResponse({ status: 200, description: 'Webhook replayed' })
+  @ApiResponse({
+    status: 200,
+    description: 'Webhook replayed',
+    type: ReplayWebhookResultDto,
+  })
   @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
   async replayDLQ(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<{ replayed: true }> {
+  ): Promise<ReplayWebhookResultDto> {
     await this.queueService.replayFromDLQ(id);
 
     await this.auditLogRepo.record({
