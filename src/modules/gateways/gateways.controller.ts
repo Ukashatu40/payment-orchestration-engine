@@ -10,6 +10,7 @@ import {
   HttpStatus,
   Post,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -25,11 +26,16 @@ import { GatewayHealthService } from './health/gateway-health.service';
 import { DataSource } from 'typeorm';
 import { RoutingConfig } from './entities/routing-config.entity';
 import { UpdateRoutingConfigDto } from './dto/update-routing-config.dto';
-import { PaymentGateway, UserRole } from '../../common/enums';
+import { PaymentGateway, PaymentMethod, UserRole } from '../../common/enums';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { UserAuditLogRepository } from '../users/repositories/user-audit-log.repository';
+import { GatewaySummaryDto } from './dto/gateway-summary.dto';
+import { GatewayHealthDto } from './dto/gateway-health.dto';
+import { GatewayMetricsDto } from './dto/gateway-metrics.dto';
+import { GatewayConfigUpdateResultDto } from './dto/gateway-config-update-result.dto';
+import { RoutingConfigResponseDto } from './dto/routing-config-response.dto';
 
 @ApiTags('gateways')
 @ApiSecurity('X-API-Key')
@@ -49,31 +55,42 @@ export class GatewaysController {
   @ApiResponse({
     status: 200,
     description: 'List of payment gateways retrieved',
+    type: [GatewaySummaryDto],
   })
-  async listGateways() {
+  async listGateways(): Promise<GatewaySummaryDto[]> {
     const configs = await this.gatewayConfigRepo.findAll();
     const states = this.circuitBreaker.getAllStates();
 
-    return configs.map((config) => ({
-      gateway: config.gateway,
-      isEnabled: config.isEnabled,
-      healthScore: this.circuitBreaker.getHealthScore(config.gateway, config.supportedMethods[0]),
-      circuitState: states.find((s) => s.gateway === config.gateway)?.state,
-      // Parse the PostgreSQL array string if TypeORM returns it as string
-      supportedMethods: Array.isArray(config.supportedMethods)
+    return configs.map((config) => {
+      // Parse the PostgreSQL array string if TypeORM returns it as string —
+      // must happen before use, not after: indexing the raw string (e.g.
+      // "{CARD_CREDIT,...}"[0]) silently returns "{" instead of the first
+      // method, which previously got passed straight into getHealthScore(),
+      // querying a bogus never-failed circuit breaker entry and making
+      // every gateway report a meaningless 100% health score.
+      const supportedMethods: PaymentMethod[] = Array.isArray(config.supportedMethods)
         ? config.supportedMethods
-        : (config.supportedMethods as unknown as string)
+        : ((config.supportedMethods as unknown as string)
             .replace(/^{|}$/g, '')
             .split(',')
-            .filter(Boolean),
-    }));
+            .filter(Boolean) as PaymentMethod[]);
+
+      return {
+        gateway: config.gateway,
+        isEnabled: config.isEnabled,
+        healthScore: this.circuitBreaker.getHealthScore(config.gateway, supportedMethods[0]),
+        circuitState: states.find((s) => s.gateway === config.gateway)?.state,
+        supportedMethods,
+      };
+    });
   }
 
   // GET /api/v1/gateways/:name/health
   @Get(':name/health')
   @ApiOperation({ summary: 'Get health status of a payment gateway' })
-  @ApiResponse({ status: 200, description: 'Health status retrieved' })
-  async getGatewayHealth(@Param('name') name: string) {
+  @ApiParam({ name: 'name', enum: PaymentGateway })
+  @ApiResponse({ status: 200, description: 'Health status retrieved', type: GatewayHealthDto })
+  async getGatewayHealth(@Param('name') name: string): Promise<GatewayHealthDto> {
     const gateway = name.toUpperCase() as PaymentGateway;
     const config = await this.gatewayConfigRepo.findByGateway(gateway);
     const states = this.circuitBreaker.getAllStates().filter((s) => s.gateway === gateway);
@@ -81,6 +98,7 @@ export class GatewaysController {
     return {
       gateway,
       isEnabled: config?.isEnabled ?? false,
+      cbFailureThreshold: config?.cbFailureThreshold ?? 0,
       circuitBreakerStates: states,
     };
   }
@@ -88,8 +106,9 @@ export class GatewaysController {
   // GET /api/v1/gateways/:name/metrics
   @Get(':name/metrics')
   @ApiOperation({ summary: 'Get metrics for a payment gateway' })
-  @ApiResponse({ status: 200, description: 'Metrics retrieved' })
-  async getGatewayMetrics(@Param('name') name: string) {
+  @ApiParam({ name: 'name', enum: PaymentGateway })
+  @ApiResponse({ status: 200, description: 'Metrics retrieved', type: [GatewayMetricsDto] })
+  async getGatewayMetrics(@Param('name') name: string): Promise<GatewayMetricsDto[]> {
     const metrics = await this.healthService.getSlidingWindowMetrics(10);
     const gateway = name.toUpperCase() as PaymentGateway;
     return metrics.filter((m) => m.gateway === gateway);
@@ -103,7 +122,11 @@ export class GatewaysController {
   @Put(':name/config')
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
   @ApiOperation({ summary: 'Update configuration for a payment gateway' })
-  @ApiResponse({ status: 200, description: 'Configuration updated' })
+  @ApiResponse({
+    status: 200,
+    description: 'Configuration updated',
+    type: GatewayConfigUpdateResultDto,
+  })
   @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
   @ApiParam({
     name: 'name',
@@ -115,11 +138,15 @@ export class GatewaysController {
       type: 'object',
       properties: {
         isEnabled: { type: 'boolean' },
-        cbFailureThreshold: { type: 'number', minimum: 0, maximum: 1 },
+        cbFailureThreshold: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Consecutive failure count that trips the circuit breaker open',
+        },
       },
       example: {
         isEnabled: true,
-        cbFailureThreshold: 0.3,
+        cbFailureThreshold: 5,
       },
     },
   })
@@ -128,7 +155,7 @@ export class GatewaysController {
     @Param('name') name: string,
     @Body() body: Partial<{ isEnabled: boolean; cbFailureThreshold: number }>,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
+  ): Promise<GatewayConfigUpdateResultDto> {
     const gateway = name.toUpperCase() as PaymentGateway;
     await this.gatewayConfigRepo.updateConfig(gateway, body);
 
@@ -149,11 +176,21 @@ export class GatewaysController {
   // GET /api/v1/routing/config
   @Get('/routing/config')
   @ApiOperation({ summary: 'Get current routing configuration' })
-  @ApiResponse({ status: 200, description: 'Routing configuration retrieved' })
-  async getRoutingConfig() {
-    return this.dataSource
+  @ApiResponse({
+    status: 200,
+    description: 'Routing configuration retrieved',
+    type: RoutingConfigResponseDto,
+  })
+  async getRoutingConfig(): Promise<RoutingConfigResponseDto> {
+    const config = await this.dataSource
       .getRepository(RoutingConfig)
       .findOne({ where: { configKey: 'default' } });
+
+    if (!config) {
+      throw new NotFoundException('Routing configuration not found');
+    }
+
+    return RoutingConfigResponseDto.fromEntity(config);
   }
 
   // PUT /api/v1/routing/config
@@ -163,7 +200,11 @@ export class GatewaysController {
   @Put('/routing/config')
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
   @ApiOperation({ summary: 'Update routing configuration' })
-  @ApiResponse({ status: 200, description: 'Routing configuration updated' })
+  @ApiResponse({
+    status: 200,
+    description: 'Routing configuration updated',
+    type: RoutingConfigResponseDto,
+  })
   @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN or OPS_ADMIN' })
   @ApiBody({
     schema: {
@@ -188,7 +229,7 @@ export class GatewaysController {
   async updateRoutingConfig(
     @Body() body: UpdateRoutingConfigDto,
     @CurrentUser() user: AuthenticatedUser,
-  ) {
+  ): Promise<RoutingConfigResponseDto> {
     // Validate weights sum to 1.0
     const sum =
       body.weightSuccessRate +
@@ -203,7 +244,8 @@ export class GatewaysController {
       throw new BadRequestException(`Routing weights must sum to 1.0, got ${sum}`);
     }
 
-    await this.dataSource.getRepository(RoutingConfig).update({ configKey: 'default' }, body);
+    const repo = this.dataSource.getRepository(RoutingConfig);
+    await repo.update({ configKey: 'default' }, body);
 
     await this.auditLogRepo.record({
       actorUserId: user.id,
@@ -213,6 +255,7 @@ export class GatewaysController {
       metadata: body as unknown as Record<string, unknown>,
     });
 
-    return { updated: true };
+    const updated = await repo.findOneOrFail({ where: { configKey: 'default' } });
+    return RoutingConfigResponseDto.fromEntity(updated);
   }
 }
