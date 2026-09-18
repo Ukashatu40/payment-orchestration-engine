@@ -31,9 +31,12 @@ import { CapturePaymentRequestDto } from './dto/capture-payment.dto';
 import { RefundPaymentRequestDto } from './dto/refund-payment.dto';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { ListPaymentsQueryDto } from './dto/list-payments-query.dto';
-import { type ListPaymentsResponseDto } from './dto/list-payments-response.dto';
+import { ListPaymentsResponseDto } from './dto/list-payments-response.dto';
 import { PaymentResponseDto } from './dto/payment-response.dto';
+import { SuccessRateByGatewayDto } from './dto/success-rate.dto';
+import { VolumeByDayDto } from './dto/volume-by-day.dto';
 import { RefundResponseDto } from './dto/refund-response.dto';
+import { TimelineEntryDto } from './dto/timeline-entry.dto';
 import { CurrentMerchant } from '../auth/decorators/current-merchant.decorator';
 import { CurrentPrincipal } from '../auth/decorators/current-principal.decorator';
 import { type RequestPrincipal } from '../auth/interfaces/jwt-payload.interface';
@@ -105,7 +108,7 @@ export class TransactionsController {
   // GET /api/v1/payments/:id
   @Get(':id')
   @ApiOperation({ summary: 'Retrieve payment details by ID' })
-  @ApiResponse({ status: 200, description: 'Payment found' })
+  @ApiResponse({ status: 200, description: 'Payment found', type: PaymentResponseDto })
   @ApiResponse({ status: 403, description: 'Transaction belongs to a different merchant' })
   @ApiResponse({ status: 404, description: 'Payment not found' })
   async getPayment(
@@ -130,10 +133,17 @@ export class TransactionsController {
   @ApiQuery({ name: 'merchant_order_id', required: false })
   @ApiQuery({ name: 'state', required: false, enum: TransactionState })
   @ApiQuery({ name: 'gateway', required: false, enum: PaymentGateway })
-  @ApiQuery({ name: 'from', required: false, description: 'ISO 8601 date' })
-  @ApiQuery({ name: 'to', required: false, description: 'ISO 8601 date' })
+  @ApiQuery({ name: 'from', required: false, type: String, format: 'date-time' })
+  @ApiQuery({ name: 'to', required: false, type: String, format: 'date-time' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Paginated list (default — omit merchant_order_id). When merchant_order_id is ' +
+      'passed, the response is a single PaymentResponseDto instead of this page shape.',
+    type: ListPaymentsResponseDto,
+  })
   async listOrGetPayments(
     @Query('merchant_order_id') merchantOrderId: string | undefined,
     @Query() query: ListPaymentsQueryDto,
@@ -165,7 +175,7 @@ export class TransactionsController {
   @Post(':id/capture')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Capture an authorised payment' })
-  @ApiResponse({ status: 200, description: 'Payment captured' })
+  @ApiResponse({ status: 200, description: 'Payment captured', type: PaymentResponseDto })
   @ApiResponse({ status: 422, description: 'Invalid state transition' })
   @ApiBody({
     description: 'Optional amount to capture (for partial captures)',
@@ -200,7 +210,7 @@ export class TransactionsController {
   @Post(':id/void')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Void an authorised payment' })
-  @ApiResponse({ status: 200, description: 'Payment voided' })
+  @ApiResponse({ status: 200, description: 'Payment voided', type: PaymentResponseDto })
   @ApiResponse({ status: 422, description: 'Invalid state transition' })
   async voidPayment(
     @Param('id', ParseUUIDPipe) id: string,
@@ -221,7 +231,7 @@ export class TransactionsController {
   @Post(':id/refund')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refund a completed payment' })
-  @ApiResponse({ status: 200, description: 'Payment refunded' })
+  @ApiResponse({ status: 200, description: 'Payment refunded', type: PaymentResponseDto })
   @ApiResponse({ status: 422, description: 'Invalid state transition' })
   @ApiBody({
     description: 'Refund amount and reason',
@@ -262,20 +272,21 @@ export class TransactionsController {
   // GET /api/v1/payments/:id/timeline
   @Get(':id/timeline')
   @ApiOperation({ summary: 'Retrieve payment timeline' })
-  @ApiResponse({ status: 200, description: 'Timeline retrieved' })
+  @ApiResponse({ status: 200, description: 'Timeline retrieved', type: [TimelineEntryDto] })
   @ApiResponse({ status: 404, description: 'Payment not found' })
   async getTimeline(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentPrincipal() principal: RequestPrincipal,
-  ) {
+  ): Promise<TimelineEntryDto[]> {
     await this.assertOwnershipById(id, principal);
-    return this.transactionsService.getTimeline(id);
+    const entries = await this.transactionsService.getTimeline(id);
+    return entries.map(TimelineEntryDto.fromEntity);
   }
 
   // GET /api/v1/payments/:id/refunds
   @Get(':id/refunds')
   @ApiOperation({ summary: 'List refunds for a payment' })
-  @ApiResponse({ status: 200, description: 'Refunds retrieved' })
+  @ApiResponse({ status: 200, description: 'Refunds retrieved', type: [RefundResponseDto] })
   @ApiResponse({ status: 404, description: 'Payment not found' })
   async getRefunds(
     @Param('id', ParseUUIDPipe) id: string,
@@ -289,21 +300,29 @@ export class TransactionsController {
   // GET /api/v1/analytics/success-rate
   @Get('analytics/success-rate')
   @ApiOperation({ summary: 'Get payment success rate analytics' })
-  @ApiResponse({ status: 200, description: 'Success rate analytics retrieved' })
+  @ApiResponse({
+    status: 200,
+    description: 'Success rate analytics retrieved',
+    type: [SuccessRateByGatewayDto],
+  })
   @ApiQuery({
     name: 'from',
     required: false,
+    type: String,
+    format: 'date-time',
     description: 'Start date for analytics (ISO 8601 format)',
   })
   @ApiQuery({
     name: 'to',
     required: false,
+    type: String,
+    format: 'date-time',
     description: 'End date for analytics (ISO 8601 format)',
   })
   async getSuccessRate(
     @Query() query: AnalyticsQueryDto,
     @CurrentMerchant({ required: false }) merchantId: string | undefined,
-  ) {
+  ): Promise<SuccessRateByGatewayDto[]> {
     const from = query.from ? new Date(query.from) : new Date(Date.now() - 86_400_000);
     const to = query.to ? new Date(query.to) : new Date();
     return this.transactionsService.getSuccessRateAnalytics(from, to, merchantId);
@@ -312,21 +331,29 @@ export class TransactionsController {
   // GET /api/v1/analytics/volume
   @Get('analytics/volume')
   @ApiOperation({ summary: 'Get payment volume analytics' })
-  @ApiResponse({ status: 200, description: 'Volume analytics retrieved' })
+  @ApiResponse({
+    status: 200,
+    description: 'Volume analytics retrieved',
+    type: [VolumeByDayDto],
+  })
   @ApiQuery({
     name: 'from',
     required: false,
+    type: String,
+    format: 'date-time',
     description: 'Start date for analytics (ISO 8601 format)',
   })
   @ApiQuery({
     name: 'to',
     required: false,
+    type: String,
+    format: 'date-time',
     description: 'End date for analytics (ISO 8601 format)',
   })
   async getVolume(
     @Query() query: AnalyticsQueryDto,
     @CurrentMerchant({ required: false }) merchantId: string | undefined,
-  ) {
+  ): Promise<VolumeByDayDto[]> {
     const from = query.from ? new Date(query.from) : new Date(Date.now() - 86_400_000);
     const to = query.to ? new Date(query.to) : new Date();
     return this.transactionsService.getVolumeAnalytics(from, to, merchantId);

@@ -186,6 +186,15 @@ export class TransactionRepository {
       qb.andWhere('txn.merchantId = :merchantId', { merchantId });
     }
 
-    return qb.getRawMany();
+    const rows = await qb.getRawMany<{ date: Date | string; count: string; totalPaise: string }>();
+
+    // pg returns DATE(...) as a JS Date and COUNT(*) as a string (bigint-safe);
+    // normalize both so the response actually matches this method's declared
+    // return type instead of leaking driver-specific raw values.
+    return rows.map((row) => ({
+      date: (row.date instanceof Date ? row.date.toISOString() : row.date).slice(0, 10),
+      count: parseInt(row.count, 10),
+      totalPaise: row.totalPaise ?? '0',
+    }));
   }
 }
