@@ -12,7 +12,10 @@ import { ReconciliationModule } from './modules/reconciliation/reconciliation.mo
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { TraceIdInterceptor } from './common/interceptors/trace-id.interceptor';
 import { IdempotencyKeyInterceptor } from './common/interceptors/idempotency.interceptor';
-import { ApiKeyGuard } from './common/guards/api-key.guard';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { AuthGuard } from './modules/auth/guards/auth.guard';
+import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { AppController } from './app.controller';
 
 @Module({
@@ -25,6 +28,8 @@ import { AppController } from './app.controller';
 
     DatabaseModule,
     IdempotencyModule,
+    UsersModule,
+    AuthModule,
     GatewaysModule,
     TransactionsModule,
     WebhooksModule,
@@ -52,10 +57,17 @@ import { AppController } from './app.controller';
       useClass: IdempotencyKeyInterceptor,
     },
 
-    // Global API key guard — all routes require authentication
+    // Global auth guard — accepts a user session (cookie/JWT) or a
+    // legacy API key. Runs before RolesGuard, which needs the
+    // request.user it populates. Registration order matters here —
+    // multiple APP_GUARD providers run in the order they're listed.
     {
       provide: APP_GUARD,
-      useClass: ApiKeyGuard,
+      useClass: AuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

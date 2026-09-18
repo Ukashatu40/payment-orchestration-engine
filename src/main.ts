@@ -6,6 +6,7 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import fastifyCookie from '@fastify/cookie';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
@@ -31,6 +32,16 @@ async function bootstrap() {
   // This runs before NestJS tries to register its own parser.
   // Satisfies Deliberate Error 5 fix — uses raw buffer for HMAC.
   const fastify = app.getHttpAdapter().getInstance();
+
+  // Auth cookies (payflow_access_token / payflow_refresh_token, see
+  // auth.controller.ts) are httpOnly and not signed here — the JWT
+  // itself is signed/verified, and the refresh token is an opaque
+  // random value hashed server-side, so an unsigned cookie is fine.
+  // Type provider generics between this Fastify instance (as exposed
+  // by Nest's FastifyAdapter) and @fastify/cookie's plugin signature
+  // don't line up cleanly — cast at the boundary, consistent with the
+  // existing `any`-typed raw Fastify interop just below.
+  await fastify.register(fastifyCookie as any);
 
   fastify.addContentTypeParser(
     'application/json',

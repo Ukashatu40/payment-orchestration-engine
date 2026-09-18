@@ -12,6 +12,74 @@ paths:
       summary: Check application health
       tags:
         - health
+  /api/v1/auth/login:
+    post:
+      operationId: AuthController_login_v1
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginDto'
+      responses:
+        '200':
+          description: Logged in — session cookies set
+        '401':
+          description: Invalid credentials, disabled, or locked account
+      summary: Log in with email + password
+      tags: &ref_0
+        - auth
+  /api/v1/auth/refresh:
+    post:
+      operationId: AuthController_refresh_v1
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      summary: Rotate the refresh token and issue a new access token
+      tags: *ref_0
+  /api/v1/auth/logout:
+    post:
+      operationId: AuthController_logout_v1
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      summary: Log out — revokes the current refresh token
+      tags: *ref_0
+  /api/v1/auth/me:
+    get:
+      operationId: AuthController_me_v1
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      summary: Get the current authenticated user
+      tags: *ref_0
+  /api/v1/auth/sessions:
+    get:
+      operationId: AuthController_sessions_v1
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      summary: List active sessions (refresh tokens) for the current user
+      tags: *ref_0
+  /api/v1/auth/sessions/{id}:
+    delete:
+      operationId: AuthController_revokeSession_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+      summary: Revoke a specific session (must belong to the current user)
+      tags: *ref_0
   /api/v1/gateways:
     get:
       operationId: GatewaysController_listGateways_v1
@@ -19,10 +87,10 @@ paths:
       responses:
         '200':
           description: List of payment gateways retrieved
-      security: &ref_0
+      security: &ref_1
         - X-API-Key: []
       summary: List all payment gateways
-      tags: &ref_1
+      tags: &ref_2
         - gateways
   /api/v1/gateways/{name}/health:
     get:
@@ -36,9 +104,9 @@ paths:
       responses:
         '200':
           description: Health status retrieved
-      security: *ref_0
+      security: *ref_1
       summary: Get health status of a payment gateway
-      tags: *ref_1
+      tags: *ref_2
   /api/v1/gateways/{name}/metrics:
     get:
       operationId: GatewaysController_getGatewayMetrics_v1
@@ -51,9 +119,9 @@ paths:
       responses:
         '200':
           description: Metrics retrieved
-      security: *ref_0
+      security: *ref_1
       summary: Get metrics for a payment gateway
-      tags: *ref_1
+      tags: *ref_2
   /api/v1/gateways/{name}/config:
     put:
       operationId: GatewaysController_updateGatewayConfig_v1
@@ -92,9 +160,11 @@ paths:
       responses:
         '200':
           description: Configuration updated
-      security: *ref_0
+        '403':
+          description: Requires SUPER_ADMIN or OPS_ADMIN
+      security: *ref_1
       summary: Update configuration for a payment gateway
-      tags: *ref_1
+      tags: *ref_2
   /api/v1/gateways/routing/config:
     get:
       operationId: GatewaysController_getRoutingConfig_v1
@@ -102,9 +172,9 @@ paths:
       responses:
         '200':
           description: Routing configuration retrieved
-      security: *ref_0
+      security: *ref_1
       summary: Get current routing configuration
-      tags: *ref_1
+      tags: *ref_2
     put:
       operationId: GatewaysController_updateRoutingConfig_v1
       parameters: []
@@ -144,19 +214,15 @@ paths:
       responses:
         '200':
           description: Routing configuration updated
-      security: *ref_0
+        '403':
+          description: Requires SUPER_ADMIN or OPS_ADMIN
+      security: *ref_1
       summary: Update routing configuration
-      tags: *ref_1
+      tags: *ref_2
   /api/v1/payments:
     post:
       operationId: TransactionsController_initiatePayment_v1
       parameters:
-        - name: x-merchant-id
-          required: true
-          in: header
-          description: Merchant UUID
-          schema:
-            type: string
         - name: idempotency-key
           required: true
           in: header
@@ -178,6 +244,15 @@ paths:
           in: header
           schema:
             type: string
+        - name: x-merchant-id
+          in: header
+          description: >-
+            Merchant UUID — only honored for legacy API-key callers. Ignored for
+            user-session (JWT) callers, whose merchant is derived from their
+            session.
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -190,31 +265,89 @@ paths:
         '400':
           description: Validation error
         '401':
-          description: Invalid or missing API key
+          description: Invalid or missing credentials
         '409':
           description: Idempotency conflict — request in progress
         '503':
           description: No gateway available
       summary: Initiate a new payment
-      tags: &ref_2
+      tags: &ref_3
         - Transactions
     get:
-      operationId: TransactionsController_getByMerchantOrderId_v1
+      operationId: TransactionsController_listOrGetPayments_v1
       parameters:
-        - name: merchant_order_id
-          required: true
+        - name: pageSize
+          required: false
           in: query
           schema:
-            type: string
-        - name: x-merchant-id
-          required: true
-          in: header
+            type: number
+        - name: page
+          required: false
+          in: query
           schema:
+            type: number
+        - name: to
+          required: false
+          in: query
+          description: ISO 8601 date
+          schema: {}
+        - name: from
+          required: false
+          in: query
+          description: ISO 8601 date
+          schema: {}
+        - name: gateway
+          required: false
+          in: query
+          schema:
+            enum:
+              - RAZORPAY
+              - STRIPE
+              - PAYU
+              - UPI
+              - PAYSTACK
+              - FLUTTERWAVE
+              - INTERSWITCH
+              - OPAY
             type: string
+        - name: state
+          required: false
+          in: query
+          schema:
+            enum:
+              - CREATED
+              - ROUTE_SELECTED
+              - AUTH_INITIATED
+              - AUTHORISED
+              - AUTH_FAILED
+              - AUTH_TIMEOUT
+              - AUTH_EXPIRED
+              - CAPTURE_INITIATED
+              - CAPTURED
+              - PARTIALLY_CAPTURED
+              - CAPTURE_FAILED
+              - VOID_INITIATED
+              - VOIDED
+              - REFUND_INITIATED
+              - REFUNDED
+              - PARTIALLY_REFUNDED
+              - REFUND_FAILED
+              - SETTLED
+              - DISPUTE_OPENED
+              - DISPUTE_RESOLVED
+              - ABANDONED
+              - ROUTE_FAILED
+              - FAILED
+            type: string
+        - name: merchant_order_id
+          required: false
+          in: query
+          schema: {}
       responses:
         '200':
           description: ''
-      tags: *ref_2
+      summary: Look up a payment by merchant_order_id, or list/filter payments
+      tags: *ref_3
   /api/v1/payments/{id}:
     get:
       operationId: TransactionsController_getPayment_v1
@@ -227,10 +360,12 @@ paths:
       responses:
         '200':
           description: Payment found
+        '403':
+          description: Transaction belongs to a different merchant
         '404':
           description: Payment not found
       summary: Retrieve payment details by ID
-      tags: *ref_2
+      tags: *ref_3
   /api/v1/payments/{id}/capture:
     post:
       operationId: TransactionsController_capturePayment_v1
@@ -238,11 +373,6 @@ paths:
         - name: id
           required: true
           in: path
-          schema:
-            type: string
-        - name: x-merchant-id
-          required: true
-          in: header
           schema:
             type: string
       requestBody:
@@ -264,7 +394,7 @@ paths:
         '422':
           description: Invalid state transition
       summary: Capture an authorised payment
-      tags: *ref_2
+      tags: *ref_3
   /api/v1/payments/{id}/void:
     post:
       operationId: TransactionsController_voidPayment_v1
@@ -274,18 +404,13 @@ paths:
           in: path
           schema:
             type: string
-        - name: x-merchant-id
-          required: true
-          in: header
-          schema:
-            type: string
       responses:
         '200':
           description: Payment voided
         '422':
           description: Invalid state transition
       summary: Void an authorised payment
-      tags: *ref_2
+      tags: *ref_3
   /api/v1/payments/{id}/refund:
     post:
       operationId: TransactionsController_refundPayment_v1
@@ -293,11 +418,6 @@ paths:
         - name: id
           required: true
           in: path
-          schema:
-            type: string
-        - name: x-merchant-id
-          required: true
-          in: header
           schema:
             type: string
       requestBody:
@@ -329,7 +449,7 @@ paths:
         '422':
           description: Invalid state transition
       summary: Refund a completed payment
-      tags: *ref_2
+      tags: *ref_3
   /api/v1/payments/{id}/timeline:
     get:
       operationId: TransactionsController_getTimeline_v1
@@ -345,7 +465,7 @@ paths:
         '404':
           description: Payment not found
       summary: Retrieve payment timeline
-      tags: *ref_2
+      tags: *ref_3
   /api/v1/payments/{id}/refunds:
     get:
       operationId: TransactionsController_getRefunds_v1
@@ -361,7 +481,7 @@ paths:
         '404':
           description: Payment not found
       summary: List refunds for a payment
-      tags: *ref_2
+      tags: *ref_3
   /api/v1/payments/analytics/success-rate:
     get:
       operationId: TransactionsController_getSuccessRate_v1
@@ -380,7 +500,7 @@ paths:
         '200':
           description: Success rate analytics retrieved
       summary: Get payment success rate analytics
-      tags: *ref_2
+      tags: *ref_3
   /api/v1/payments/analytics/volume:
     get:
       operationId: TransactionsController_getVolume_v1
@@ -399,7 +519,7 @@ paths:
         '200':
           description: Volume analytics retrieved
       summary: Get payment volume analytics
-      tags: *ref_2
+      tags: *ref_3
   /api/v1/webhooks/razorpay:
     post:
       operationId: WebhooksController_razorpayWebhook_v1
@@ -407,10 +527,10 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: &ref_3
+      security: &ref_4
         - X-API-Key: []
       summary: Handle Razorpay webhook
-      tags: &ref_4
+      tags: &ref_5
         - webhooks
   /api/v1/webhooks/stripe:
     post:
@@ -419,9 +539,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_3
+      security: *ref_4
       summary: Handle Stripe webhook
-      tags: *ref_4
+      tags: *ref_5
   /api/v1/webhooks/payu:
     post:
       operationId: WebhooksController_payuWebhook_v1
@@ -429,9 +549,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_3
+      security: *ref_4
       summary: Handle PayU webhook
-      tags: *ref_4
+      tags: *ref_5
   /api/v1/webhooks/upi:
     post:
       operationId: WebhooksController_upiWebhook_v1
@@ -439,9 +559,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_3
+      security: *ref_4
       summary: Handle UPI webhook
-      tags: *ref_4
+      tags: *ref_5
   /api/v1/webhooks/paystack:
     post:
       operationId: WebhooksController_paystackWebhook_v1
@@ -449,9 +569,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_3
+      security: *ref_4
       summary: Handle Paystack webhook
-      tags: *ref_4
+      tags: *ref_5
   /api/v1/webhooks/flutterwave:
     post:
       operationId: WebhooksController_flutterwaveWebhook_v1
@@ -459,9 +579,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_3
+      security: *ref_4
       summary: Handle Flutterwave webhook
-      tags: *ref_4
+      tags: *ref_5
   /api/v1/webhooks/interswitch:
     post:
       operationId: WebhooksController_interswitchWebhook_v1
@@ -469,9 +589,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_3
+      security: *ref_4
       summary: Handle Interswitch webhook
-      tags: *ref_4
+      tags: *ref_5
   /api/v1/webhooks/opay:
     post:
       operationId: WebhooksController_opayWebhook_v1
@@ -479,9 +599,9 @@ paths:
       responses:
         '200':
           description: Webhook received
-      security: *ref_3
+      security: *ref_4
       summary: Handle Opay webhook
-      tags: *ref_4
+      tags: *ref_5
   /api/v1/webhooks/dlq:
     get:
       operationId: WebhooksController_getDLQ_v1
@@ -494,9 +614,9 @@ paths:
       responses:
         '200':
           description: Failed webhooks retrieved
-      security: *ref_3
+      security: *ref_4
       summary: Retrieve failed webhooks
-      tags: *ref_4
+      tags: *ref_5
   /api/v1/webhooks/dlq/{id}/replay:
     post:
       operationId: WebhooksController_replayDLQ_v1
@@ -509,9 +629,11 @@ paths:
       responses:
         '200':
           description: Webhook replayed
-      security: *ref_3
+        '403':
+          description: Requires SUPER_ADMIN or OPS_ADMIN
+      security: *ref_4
       summary: Replay a failed webhook
-      tags: *ref_4
+      tags: *ref_5
   /api/v1/reconciliation/trigger:
     post:
       operationId: ReconciliationController_triggerReconciliation_v1
@@ -519,10 +641,12 @@ paths:
       responses:
         '200':
           description: Reconciliation triggered
-      security: &ref_5
+        '403':
+          description: Requires SUPER_ADMIN or OPS_ADMIN
+      security: &ref_6
         - X-API-Key: []
       summary: Trigger reconciliation process
-      tags: &ref_6
+      tags: &ref_7
         - reconciliation
   /api/v1/reconciliation/reports/{runId}:
     get:
@@ -536,9 +660,9 @@ paths:
       responses:
         '200':
           description: Report retrieved
-      security: *ref_5
+      security: *ref_6
       summary: Get reconciliation report
-      tags: *ref_6
+      tags: *ref_7
   /api/v1/reconciliation/anomalies:
     get:
       operationId: ReconciliationController_getAnomalies_v1
@@ -546,9 +670,39 @@ paths:
       responses:
         '200':
           description: Anomalies retrieved
-      security: *ref_5
+      security: *ref_6
       summary: Get unresolved anomalies
-      tags: *ref_6
+      tags: *ref_7
+  /api/v1/reconciliation/anomalies/{id}/resolve:
+    post:
+      operationId: ReconciliationController_resolveAnomaly_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+              required:
+                - notes
+              example:
+                notes: Confirmed with gateway support — settled, false positive.
+      responses:
+        '200':
+          description: Anomaly marked resolved
+        '403':
+          description: Requires SUPER_ADMIN or OPS_ADMIN
+      security: *ref_6
+      summary: Mark an anomaly resolved/investigated
+      tags: *ref_7
 info:
   title: PayFlow Orchestration Layer
   description: >-
@@ -578,6 +732,9 @@ components:
       in: header
       name: X-API-Key
   schemas:
+    LoginDto:
+      type: object
+      properties: {}
     InitiatePaymentRequestDto:
       type: object
       properties: {}
