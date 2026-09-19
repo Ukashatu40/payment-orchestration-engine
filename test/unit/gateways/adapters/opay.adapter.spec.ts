@@ -111,6 +111,32 @@ describe('OpayAdapter', () => {
       expect(capturedBody?.reference).toBe('txn-1');
     });
 
+    it('sends callbackUrl and substitutes {transactionId} in returnUrl', async () => {
+      findByGateway.mockResolvedValue(
+        mockConfig({
+          metadata: {
+            baseUrl: BASE_URL,
+            secretKey: 'secret-key-xxx',
+            publicKey: 'public-key-xxx',
+            returnUrl: 'https://portal.example.com/transactions/{transactionId}',
+            callbackUrl: 'https://api.example.com/api/v1/webhooks/opay',
+          },
+        }),
+      );
+      let capturedBody: { returnUrl: string; callbackUrl?: string } | undefined;
+      nock(BASE_URL)
+        .post('/api/v1/international/cashier/create', (body: typeof capturedBody) => {
+          capturedBody = body;
+          return true;
+        })
+        .reply(200, { code: '00000', message: 'ok', data: { orderNo: 'o' } });
+
+      await adapter.authorise(baseAuthRequest);
+
+      expect(capturedBody?.returnUrl).toBe('https://portal.example.com/transactions/txn-1');
+      expect(capturedBody?.callbackUrl).toBe('https://api.example.com/api/v1/webhooks/opay');
+    });
+
     it('fails clearly when returnUrl/publicKey are not configured', async () => {
       findByGateway.mockResolvedValue(mockConfig({ metadata: { baseUrl: BASE_URL } }));
 

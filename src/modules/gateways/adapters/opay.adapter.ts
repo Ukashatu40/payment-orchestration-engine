@@ -51,8 +51,11 @@ interface OpayResponse {
 // merchant PUBLIC key as the Bearer token; every other call uses the
 // HMAC-SHA512 body signature. Extra metadata keys read by this adapter:
 //   publicKey  — Bearer token for cashier/create
-//   returnUrl  — where Opay sends the payer after checkout (required)
-//   callbackUrl — optional webhook URL override
+//   returnUrl  — page the payer's browser returns to (required; may use
+//                {transactionId}), NOT the webhook route
+//   cancelUrl  — optional page for cancelled checkouts
+//   callbackUrl — https://<host>/api/v1/webhooks/opay, where Opay POSTs
+//                the payment notification (without it payments stay pending)
 // Signing canonicalization and the exact envelope of the status/refund
 // responses are only partly covered by the docs — verify against the
 // sandbox before production.
@@ -96,6 +99,26 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
     return value;
   }
 
+  // URL settings may contain a {transactionId} placeholder. returnUrl/
+  // cancelUrl are where the payer's BROWSER is sent (a GET to a page);
+  // callbackUrl is where Opay POSTs the server-to-server notification
+  // (the /api/v1/webhooks/opay route). Mixing them up sends the browser
+  // to the POST-only webhook route.
+  private metadataUrl(
+    config: GatewayConfig,
+    key: string,
+    transactionId: string,
+    required = false,
+  ): string | undefined {
+    const raw = required ? this.requireMetadata(config, key) : config.metadata?.[key];
+    if (typeof raw !== 'string' || raw.length === 0) return undefined;
+    return raw.replaceAll('{transactionId}', transactionId);
+  }
+
+  private optionalUrl(key: string, value: string | undefined): Record<string, string> {
+    return value ? { [key]: value } : {};
+  }
+
   async authorise(req: GatewayAuthRequest): Promise<GatewayAuthResponse> {
     const config = await this.loadConfig();
     // The confirmed Opay callback payload (doc.opaycheckout.com/
@@ -105,14 +128,19 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
     // via payload.payload.reference — no metadata round-trip needed.
     const reference = req.transactionId;
 
+    if (!config.metadata?.['callbackUrl']) {
+      this.logger.warn(
+        'Opay gateway_config.metadata.callbackUrl is not set — Opay will not know where to POST payment notifications, so payments will stay pending',
+      );
+    }
+
     const payload = {
       country: 'NG',
       reference,
       amount: { total: Number(req.amountPaise), currency: req.currency }, // kobo
-      returnUrl: this.requireMetadata(config, 'returnUrl'),
-      ...(typeof config.metadata?.['callbackUrl'] === 'string' && {
-        callbackUrl: config.metadata['callbackUrl'],
-      }),
+      returnUrl: this.metadataUrl(config, 'returnUrl', reference, true),
+      ...this.optionalUrl('callbackUrl', this.metadataUrl(config, 'callbackUrl', reference)),
+      ...this.optionalUrl('cancelUrl', this.metadataUrl(config, 'cancelUrl', reference)),
       product: { name: 'Payment', description: `Order ${reference}` },
       ...(req.customerEmail && { userInfo: { userEmail: req.customerEmail } }),
     };
