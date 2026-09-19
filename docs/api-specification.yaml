@@ -159,6 +159,35 @@ paths:
       security: *ref_0
       summary: Enable or disable a user's account
       tags: *ref_1
+  /api/v1/users/{id}/password:
+    put:
+      operationId: UsersController_resetUserPassword_v1
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetUserPasswordDto'
+      responses:
+        '200':
+          description: Password reset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetUserPasswordResultDto'
+        '403':
+          description: Requires SUPER_ADMIN
+        '404':
+          description: User not found
+      security: *ref_0
+      summary: Reset a user's password (admin-initiated)
+      tags: *ref_1
   /api/v1/auth/login:
     post:
       operationId: AuthController_login_v1
@@ -219,6 +248,12 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SessionDto'
       summary: List active sessions (refresh tokens) for the current user
       tags: *ref_2
   /api/v1/auth/sessions/{id}:
@@ -233,6 +268,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RevokeSessionResultDto'
       summary: Revoke a specific session (must belong to the current user)
       tags: *ref_2
   /api/v1/gateways:
@@ -433,18 +472,25 @@ paths:
           schema:
             type: string
         - name: x-mock-response
-          required: true
+          required: false
           in: header
+          description: >-
+            Test/scenario tooling only — forces a specific gateway mock
+            response.
           schema:
             type: string
         - name: x-mock-delay-ms
-          required: true
+          required: false
           in: header
+          description: Test/scenario tooling only — simulates gateway latency.
           schema:
             type: string
         - name: x-mock-gateway-down
-          required: true
+          required: false
           in: header
+          description: >-
+            Test/scenario tooling only — simulates the gateway being
+            unavailable.
           schema:
             type: string
         - name: x-merchant-id
@@ -465,6 +511,10 @@ paths:
       responses:
         '201':
           description: Payment initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponseDto'
         '400':
           description: Validation error
         '401':
@@ -1149,6 +1199,21 @@ components:
             - DISABLED
       required:
         - status
+    ResetUserPasswordDto:
+      type: object
+      properties:
+        password:
+          type: string
+          minLength: 8
+      required:
+        - password
+    ResetUserPasswordResultDto:
+      type: object
+      properties:
+        reset:
+          type: boolean
+      required:
+        - reset
     LoginDto:
       type: object
       properties:
@@ -1217,6 +1282,37 @@ components:
         - role
         - merchantId
         - lastLoginAt
+    SessionDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        userAgent:
+          type: string
+          nullable: true
+        ip:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userAgent
+        - ip
+        - createdAt
+        - expiresAt
+    RevokeSessionResultDto:
+      type: object
+      properties:
+        revoked:
+          type: boolean
+      required:
+        - revoked
     GatewaySummaryDto:
       type: object
       properties:
@@ -1417,7 +1513,43 @@ components:
         - updatedAt
     InitiatePaymentRequestDto:
       type: object
-      properties: {}
+      properties:
+        merchantOrderId:
+          type: string
+          description: Your own order/reference ID — must be unique per merchant
+        amountPaise:
+          type: number
+          minimum: 1
+          description: Amount in minor units (e.g. paise, kobo)
+        currency:
+          type: string
+          default: INR
+        paymentMethod:
+          type: string
+          enum:
+            - CARD_CREDIT
+            - CARD_DEBIT
+            - UPI
+            - NET_BANKING
+            - WALLET
+            - BANK_TRANSFER
+            - USSD
+            - MOBILE_MONEY
+            - VIRTUAL_ACCOUNT
+        metadata:
+          type: object
+          additionalProperties: true
+        customerEmail:
+          type: string
+          description: >-
+            Customer email — required by some gateways (e.g. Paystack,
+            Flutterwave) to authorise a charge. Falls back to a merchant-scoped
+            placeholder if omitted, which those gateways will reject.
+      required:
+        - merchantOrderId
+        - amountPaise
+        - currency
+        - paymentMethod
     PaymentResponseDto:
       type: object
       properties:
@@ -1496,6 +1628,13 @@ components:
         gatewayReference:
           type: string
           nullable: true
+        checkoutUrl:
+          type: string
+          nullable: true
+          description: >-
+            Hosted checkout URL the payer must open to complete payment
+            (redirect-based gateways such as Paystack/Flutterwave). Null
+            otherwise.
         traceId:
           type: string
         createdAt:
@@ -1518,6 +1657,7 @@ components:
         - gateway
         - gatewayPaymentId
         - gatewayReference
+        - checkoutUrl
         - traceId
         - createdAt
         - updatedAt
