@@ -28,6 +28,7 @@ import { RoutingConfig } from './entities/routing-config.entity';
 import { UpdateRoutingConfigDto } from './dto/update-routing-config.dto';
 import { PaymentGateway, PaymentMethod, UserRole } from '../../common/enums';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequireCsrf } from '../auth/decorators/require-csrf.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { UserAuditLogRepository } from '../users/repositories/user-audit-log.repository';
@@ -121,6 +122,7 @@ export class GatewaysController {
   // outright, see roles.guard.ts).
   @Put(':name/config')
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
+  @RequireCsrf()
   @ApiOperation({ summary: 'Update configuration for a payment gateway' })
   @ApiResponse({
     status: 200,
@@ -199,6 +201,7 @@ export class GatewaysController {
   // gateway config above.
   @Put('/routing/config')
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
+  @RequireCsrf()
   @ApiOperation({ summary: 'Update routing configuration' })
   @ApiResponse({
     status: 200,

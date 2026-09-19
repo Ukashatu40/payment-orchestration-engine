@@ -19,6 +19,7 @@ import * as argon2 from 'argon2';
 import { UserRepository } from './repositories/user.repository';
 import { UserAuditLogRepository } from './repositories/user-audit-log.repository';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequireCsrf } from '../auth/decorators/require-csrf.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { UserRole } from '../../common/enums';
@@ -28,6 +29,8 @@ import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { ListUsersResponseDto } from './dto/list-users-response.dto';
 import { UserSummaryDto } from './dto/user-summary.dto';
+import { ResetUserPasswordDto } from './dto/reset-user-password.dto';
+import { ResetUserPasswordResultDto } from './dto/reset-user-password-result.dto';
 
 const MERCHANT_ROLES = [UserRole.MERCHANT_ADMIN, UserRole.MERCHANT_VIEWER];
 
@@ -100,6 +103,7 @@ export class UsersController {
   // OPS_ADMINs or itself an escalation path), let alone SUPER_ADMINs.
   @Post()
   @Roles(UserRole.SUPER_ADMIN)
+  @RequireCsrf()
   @ApiOperation({ summary: 'Create a user' })
   @ApiResponse({ status: 201, description: 'User created', type: UserSummaryDto })
   @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN' })
@@ -139,6 +143,7 @@ export class UsersController {
   // admin — prevents accidental self-lockout).
   @Put(':id/role')
   @Roles(UserRole.SUPER_ADMIN)
+  @RequireCsrf()
   @ApiOperation({ summary: "Change a user's role" })
   @ApiResponse({ status: 200, description: 'Role updated', type: UserSummaryDto })
   @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN' })
@@ -181,6 +186,7 @@ export class UsersController {
   // SUPER_ADMIN only; cannot disable your own account.
   @Put(':id/status')
   @Roles(UserRole.SUPER_ADMIN)
+  @RequireCsrf()
   @ApiOperation({ summary: "Enable or disable a user's account" })
   @ApiResponse({ status: 200, description: 'Status updated', type: UserSummaryDto })
   @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN' })
@@ -199,7 +205,14 @@ export class UsersController {
       throw new NotFoundException(`User not found: ${id}`);
     }
 
-    await this.userRepo.update(id, { status: body.status });
+    // Re-activating also clears any accumulated login-failure lockout —
+    // an admin confirming "this account should work again" should mean
+    // that, not leave a stale 15-minute lock (see MAX_FAILED_LOGIN_ATTEMPTS
+    // in auth.service.ts) silently still in effect.
+    await this.userRepo.update(id, {
+      status: body.status,
+      ...(body.status === 'ACTIVE' ? { failedLoginCount: 0, lockedUntil: null } : {}),
+    });
 
     await this.auditLogRepo.record({
       actorUserId: actor.id,
@@ -211,5 +224,43 @@ export class UsersController {
 
     const updated = await this.userRepo.findById(id);
     return UserSummaryDto.fromEntity(updated!);
+  }
+
+  // PUT /api/v1/users/:id/password
+  // Dangerous: an admin-initiated reset, not self-service password change.
+  // SUPER_ADMIN only; also clears any accumulated lockout, since setting a
+  // known-good password implies the account should work again.
+  @Put(':id/password')
+  @Roles(UserRole.SUPER_ADMIN)
+  @RequireCsrf()
+  @ApiOperation({ summary: "Reset a user's password (admin-initiated)" })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset',
+    type: ResetUserPasswordResultDto,
+  })
+  @ApiResponse({ status: 403, description: 'Requires SUPER_ADMIN' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async resetUserPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ResetUserPasswordDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<ResetUserPasswordResultDto> {
+    const user = await this.userRepo.findById(id);
+    if (!user) {
+      throw new NotFoundException(`User not found: ${id}`);
+    }
+
+    const passwordHash = await argon2.hash(body.password);
+    await this.userRepo.update(id, { passwordHash, failedLoginCount: 0, lockedUntil: null });
+
+    await this.auditLogRepo.record({
+      actorUserId: actor.id,
+      action: 'USER_PASSWORD_RESET',
+      targetType: 'user',
+      targetId: id,
+    });
+
+    return { reset: true };
   }
 }

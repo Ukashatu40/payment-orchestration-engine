@@ -23,7 +23,8 @@ export type UserAuditAction =
   | 'RECONCILIATION_TRIGGERED'
   | 'ANOMALY_RESOLVED'
   | 'USER_CREATED'
-  | 'USER_STATUS_CHANGED';
+  | 'USER_STATUS_CHANGED'
+  | 'USER_PASSWORD_RESET';
 
 // No BaseEntity extension — append-only, no updatedAt, matching
 // transaction_state_log. The DB rule (migration 017) enforces this.

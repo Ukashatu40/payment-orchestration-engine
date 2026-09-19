@@ -16,6 +16,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthGuard } from './modules/auth/guards/auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
+import { CsrfGuard } from './modules/auth/guards/csrf.guard';
 import { AppController } from './app.controller';
 
 @Module({
@@ -68,6 +69,10 @@ import { AppController } from './app.controller';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: CsrfGuard,
     },
   ],
 })

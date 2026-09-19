@@ -4,6 +4,7 @@ import { Controller, Post, Get, Param, Body, HttpCode, HttpStatus } from '@nestj
 import { ApiTags, ApiOperation, ApiResponse, ApiSecurity, ApiBody } from '@nestjs/swagger';
 import { ReconciliationService } from './reconciliation.service';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequireCsrf } from '../auth/decorators/require-csrf.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { UserRole } from '../../common/enums';
@@ -26,6 +27,7 @@ export class ReconciliationController {
   // Requires a real user session with an admin role.
   @Post('trigger')
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
+  @RequireCsrf()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Trigger reconciliation process' })
   @ApiResponse({
@@ -70,6 +72,7 @@ export class ReconciliationController {
   // the API (only auto-resolution during a run could clear one).
   @Post('anomalies/:id/resolve')
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
+  @RequireCsrf()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mark an anomaly resolved/investigated' })
   @ApiResponse({

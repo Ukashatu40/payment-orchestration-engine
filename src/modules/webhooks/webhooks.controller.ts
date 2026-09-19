@@ -20,6 +20,7 @@ import { WebhookProcessorService } from './webhook-processor.service';
 import { GatewayConfigRepository } from '../gateways/repositories/gateway-config.repository';
 import { PaymentGateway, UserRole } from '../../common/enums';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequireCsrf } from '../auth/decorators/require-csrf.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../auth/interfaces/jwt-payload.interface';
 import { UserAuditLogRepository } from '../users/repositories/user-audit-log.repository';
@@ -128,6 +129,7 @@ export class WebhooksController {
   // event. Requires a real user session with an admin role.
   @Post('dlq/:id/replay')
   @Roles(UserRole.SUPER_ADMIN, UserRole.OPS_ADMIN)
+  @RequireCsrf()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Replay a failed webhook' })
   @ApiResponse({

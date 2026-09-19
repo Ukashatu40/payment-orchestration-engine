@@ -21,9 +21,13 @@ import { AuthService, type TokenPair } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { SessionUserDto } from './dto/session-user.dto';
+import { SessionDto } from './dto/session.dto';
+import { RevokeSessionResultDto } from './dto/revoke-session-result.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { type AuthenticatedUser } from './interfaces/jwt-payload.interface';
 import { UserRepository } from '../users/repositories/user.repository';
+import { CSRF_COOKIE } from './guards/csrf.guard';
+import * as crypto from 'crypto';
 
 const ACCESS_COOKIE = 'payflow_access_token';
 const REFRESH_COOKIE = 'payflow_refresh_token';
@@ -126,7 +130,8 @@ export class AuthController {
   // GET /api/v1/auth/sessions
   @Get('sessions')
   @ApiOperation({ summary: 'List active sessions (refresh tokens) for the current user' })
-  async sessions(@CurrentUser() user: AuthenticatedUser) {
+  @ApiOkResponse({ type: [SessionDto] })
+  async sessions(@CurrentUser() user: AuthenticatedUser): Promise<SessionDto[]> {
     const sessions = await this.authService.getActiveSessions(user.id);
     return sessions.map((s) => ({
       id: s.id,
@@ -141,7 +146,11 @@ export class AuthController {
   @Delete('sessions/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Revoke a specific session (must belong to the current user)' })
-  async revokeSession(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+  @ApiOkResponse({ type: RevokeSessionResultDto })
+  async revokeSession(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RevokeSessionResultDto> {
     await this.authService.revokeSession(id, user.id);
     return { revoked: true };
   }
@@ -164,10 +173,23 @@ export class AuthController {
       path: REFRESH_COOKIE_PATH, // narrowest possible exposure
       expires: tokens.refreshTokenExpiresAt,
     });
+
+    // Double-submit CSRF token (see CsrfGuard) — deliberately NOT httpOnly,
+    // the frontend must read it via document.cookie to echo it as a
+    // header. It carries no secret; SameSite=Strict is still the primary
+    // defense, this is only the extra layer around dangerous mutations.
+    reply.setCookie(CSRF_COOKIE, crypto.randomBytes(32).toString('hex'), {
+      httpOnly: false,
+      secure,
+      sameSite: 'strict',
+      path: '/',
+      maxAge: 15 * 60, // matches the access token's lifetime
+    });
   }
 
   private clearAuthCookies(reply: FastifyReply): void {
     reply.clearCookie(ACCESS_COOKIE, { path: '/' });
     reply.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
+    reply.clearCookie(CSRF_COOKIE, { path: '/' });
   }
 }
