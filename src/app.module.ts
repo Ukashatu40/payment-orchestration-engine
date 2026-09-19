@@ -25,7 +25,9 @@ import { AppController } from './app.controller';
     // Config — loads .env and makes ConfigService available everywhere
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
+      // Tests must NEVER pick up .env.local: it can hold a hosted
+      // DATABASE_URL, and the scenario tests TRUNCATE tables.
+      envFilePath: process.env.NODE_ENV === 'test' ? ['.env.test'] : ['.env.local', '.env'],
     }),
 
     DatabaseModule,
