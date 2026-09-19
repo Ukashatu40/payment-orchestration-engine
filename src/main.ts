@@ -127,7 +127,7 @@ async function bootstrap() {
   const yamlDocument = yaml.dump(document);
   fs.writeFileSync(path.join(docsDir, 'api-specification.yaml'), yamlDocument, 'utf8');
 
-  const port = configService.get<number>('PORT', 3000);
+  const port = configService.get<number>('PORT', 4000);
   await app.listen(port, '0.0.0.0');
 
   console.log(`PayFlow Orchestration Layer running on port ${port}`);
