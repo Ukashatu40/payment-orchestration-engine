@@ -1,7 +1,7 @@
 # Dockerfile
 
 # ── Stage 1: Build ─────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # ── Stage 2: Production ────────────────────────────────────────
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 WORKDIR /app
 
@@ -43,7 +43,6 @@ EXPOSE 3000
 
 # Health check — used by Docker and test harness (Section B4.1)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -qO- http://localhost:3000/api/v1/health \
-      -H "X-API-Key: ${API_KEYS}" || exit 1
+  CMD wget -qO- http://localhost:${PORT}/api/v1/health || exit 1
 
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]

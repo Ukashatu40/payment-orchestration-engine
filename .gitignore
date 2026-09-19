@@ -14,7 +14,10 @@ pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
+sometext.txt
 
+# Frontend monorepo is its own git repo (nested working copy)
+/payflow-frontend/
 # OS
 .DS_Store
 

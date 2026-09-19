@@ -18,8 +18,8 @@
 //     --gateway=INTERSWITCH --api-key=client-id-xxx \
 //     --metadata='{"clientSecret":"client-secret-xxx"}'
 //
-// Reads DB connection details from process.env (DB_HOST/DB_PORT/
-// DB_USER/DB_PASSWORD/DB_NAME), the same variables the app itself
+// Reads DB connection details from process.env (DATABASE_URL, or
+// DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME), the same variables the app itself
 // uses — point this at whichever environment's DB you're seeding by
 // exporting those vars or running with `dotenv -e .env.local --`.
 
@@ -45,13 +45,22 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const client = new Client({
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    user: process.env.DB_USER ?? 'postgres',
-    password: process.env.DB_PASSWORD ?? 'postgres',
-    database: process.env.DB_NAME ?? 'payflow_db',
-  });
+  // DATABASE_URL (+ DB_SSL=true) targets a hosted DB such as Neon;
+  // otherwise fall back to the DB_* parts for local Postgres.
+  const client = new Client(
+    process.env.DATABASE_URL
+      ? {
+          connectionString: process.env.DATABASE_URL,
+          ssl: process.env.DB_SSL === 'true',
+        }
+      : {
+          host: process.env.DB_HOST ?? 'localhost',
+          port: Number(process.env.DB_PORT ?? 5432),
+          user: process.env.DB_USER ?? 'postgres',
+          password: process.env.DB_PASSWORD ?? 'postgres',
+          database: process.env.DB_NAME ?? 'payflow_db',
+        },
+  );
 
   await client.connect();
 

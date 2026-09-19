@@ -12,4 +12,5 @@ test/
 coverage/
 .nyc_output
 *.spec.ts
-jest.config.*
+jest.config.*payflow-frontend
+docs

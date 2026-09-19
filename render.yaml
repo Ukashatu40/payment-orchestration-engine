@@ -1,0 +1,25 @@
+# Render Blueprint — backend only. Postgres lives on Neon (see docs/DEPLOYMENT.md),
+# not Render, because Render's free Postgres expires after 30 days.
+services:
+  - type: web
+    name: payflow-backend
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_SSL
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: API_KEYS
+        sync: false
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false

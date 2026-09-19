@@ -44,6 +44,10 @@ import { UserAuditLog } from '../modules/users/entities/user-audit-log.entity';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
+        // Hosted Postgres (Neon, Supabase, ...) hands out one connection
+        // string and requires TLS; DATABASE_URL wins over the DB_* parts.
+        url: config.get<string>('DATABASE_URL') || undefined,
+        ssl: config.get<string>('DB_SSL') === 'true',
         host: config.get('DB_HOST', 'localhost'),
         port: config.get<number>('DB_PORT', 5432),
         username: config.get('DB_USER', 'postgres'),
@@ -100,7 +104,8 @@ import { UserAuditLog } from '../modules/users/entities/user-audit-log.entity';
           // Connection pool settings (FS-14)
           max: config.get<number>('DB_POOL_MAX', 20),
           idleTimeoutMillis: 30_000,
-          connectionTimeoutMillis: 5_000,
+          // Allows for a suspended serverless Postgres (e.g. Neon) waking up.
+          connectionTimeoutMillis: 15_000,
         },
       }),
     }),

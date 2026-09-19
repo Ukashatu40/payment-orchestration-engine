@@ -10,6 +10,23 @@ import { AuthGuard } from './guards/auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { UsersModule } from '../users/users.module';
 
+const DEV_JWT_SECRET = 'dev-only-insecure-secret-change-me';
+
+// The dev fallback is a publicly known string — anyone could mint a valid
+// SUPER_ADMIN token with it — so a production boot must refuse to use it.
+function resolveJwtSecret(config: ConfigService): string {
+  const secret = config.get<string>('JWT_SECRET', DEV_JWT_SECRET);
+  if (
+    config.get<string>('NODE_ENV') === 'production' &&
+    (secret === DEV_JWT_SECRET || secret.length < 32)
+  ) {
+    throw new Error(
+      'JWT_SECRET must be set to a random string of at least 32 characters in production',
+    );
+  }
+  return secret;
+}
+
 @Module({
   imports: [
     UsersModule,
@@ -17,7 +34,7 @@ import { UsersModule } from '../users/users.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET', 'dev-only-insecure-secret-change-me'),
+        secret: resolveJwtSecret(config),
         signOptions: { expiresIn: '15m' },
       }),
     }),
