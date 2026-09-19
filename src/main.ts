@@ -56,6 +56,16 @@ async function bootstrap() {
     },
   );
 
+  // Interswitch's hosted checkout POSTs the payer's browser back to us as a
+  // form (application/x-www-form-urlencoded); Fastify has no default parser.
+  fastify.addContentTypeParser(
+    'application/x-www-form-urlencoded',
+    { parseAs: 'string' },
+    (_req: any, body: string, done: any) => {
+      done(null, Object.fromEntries(new URLSearchParams(body)));
+    },
+  );
+
   // Validation pipe
   app.useGlobalPipes(
     new ValidationPipe({

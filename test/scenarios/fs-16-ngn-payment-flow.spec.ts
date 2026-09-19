@@ -33,6 +33,28 @@ describe('FS-16: NGN Payment Flow Routes to a Nigerian Gateway', () => {
     await cleanDatabase(getDataSource());
     nock.cleanAll();
 
+    // Opay and Interswitch refuse to create a payment without these
+    // (deployment-specific) settings; the seeded rows only carry base URLs.
+    await getDataSource().query(
+      `UPDATE gateway_config SET metadata = metadata || $1::jsonb WHERE gateway = 'OPAY'`,
+      [
+        JSON.stringify({
+          publicKey: 'pk',
+          returnUrl: 'https://portal.example.com/t/{transactionId}',
+        }),
+      ],
+    );
+    await getDataSource().query(
+      `UPDATE gateway_config SET metadata = metadata || $1::jsonb WHERE gateway = 'INTERSWITCH'`,
+      [
+        JSON.stringify({
+          merchantCode: 'MX000',
+          payItemId: 'Default_Payable_MX000',
+          publicBaseUrl: 'https://api.example.com',
+        }),
+      ],
+    );
+
     // The router may select any of the 4 NGN gateways depending on
     // scoring (all start with equal default health/cost on a clean
     // DB) — mock all four sandbox endpoints so the test doesn't
@@ -50,15 +72,15 @@ describe('FS-16: NGN Payment Flow Routes to a Nigerian Gateway', () => {
       });
 
     nock('https://sandboxapi.opaycheckout.com')
-      .post('/api/v1/cashier/create')
-      .reply(200, { code: '00000', message: 'ok', data: { orderNo: 'opay_scenario_order' } });
+      .post('/api/v1/international/cashier/create')
+      .reply(200, {
+        code: '00000',
+        message: 'ok',
+        data: { orderNo: 'opay_scenario_order', cashierUrl: 'https://cashier.example/x' },
+      });
 
-    nock('https://qa.interswitchng.com')
-      .post('/passport/oauth/token')
-      .reply(200, { access_token: 'scenario-token', expires_in: 3600 });
-    nock('https://qa.interswitchng.com')
-      .post('/api/v2/payments')
-      .reply(200, { data: { transactionReference: 'isw_scenario_ref' } });
+    // Interswitch's Web Checkout has no create-payment API — authorise()
+    // makes no outbound call at all, so nothing to intercept here.
   });
 
   it('routes an NGN card payment to one of the 4 Nigerian gateways and leaves it pending on AUTH_INITIATED', async () => {

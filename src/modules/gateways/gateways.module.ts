@@ -44,6 +44,7 @@ import { UsersModule } from '../users/users.module';
     GatewayHealthService,
     GatewayRouterService,
     GatewayConfigRepository,
+    InterswitchAdapter,
   ],
 })
 export class GatewaysModule {}

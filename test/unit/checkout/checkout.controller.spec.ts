@@ -1,0 +1,131 @@
+// test/unit/checkout/checkout.controller.spec.ts
+
+import { CheckoutController } from '../../../src/modules/checkout/checkout.controller';
+import { InterswitchAdapter } from '../../../src/modules/gateways/adapters/interswitch.adapter';
+import { PaymentGateway, TransactionState } from '../../../src/common/enums';
+
+const TXN_ID = '6f1b0f0e-8f8f-4f3e-9c55-0d8e5a1b2c3d';
+
+function makeReply() {
+  const reply = {
+    statusCode: 200,
+    headers: {} as Record<string, string>,
+    body: undefined as unknown,
+    status(code: number) {
+      reply.statusCode = code;
+      return reply;
+    },
+    header(k: string, v: string) {
+      reply.headers[k] = v;
+      return reply;
+    },
+    send(b?: unknown) {
+      reply.body = b;
+      return reply;
+    },
+  };
+  return reply;
+}
+
+describe('CheckoutController', () => {
+  const findById = jest.fn();
+  const findByGateway = jest.fn();
+  const buildCheckoutForm = jest.fn();
+  let controller: CheckoutController;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    buildCheckoutForm.mockReturnValue({
+      action: 'https://sandbox.interswitchng.com/collections/w/pay',
+      fields: { txn_ref: TXN_ID, cust_email: '"><script>x</script>' },
+    });
+    findByGateway.mockResolvedValue({
+      metadata: { returnUrl: 'https://portal.example.com/transactions/{transactionId}' },
+    });
+    controller = new CheckoutController(
+      { findById } as never,
+      { findByGateway } as never,
+      { buildCheckoutForm } as unknown as InterswitchAdapter,
+    );
+  });
+
+  it('renders an auto-submitting form with escaped values', async () => {
+    findById.mockResolvedValue({
+      id: TXN_ID,
+      gateway: PaymentGateway.INTERSWITCH,
+      state: TransactionState.AUTH_INITIATED,
+      amountPaise: '500000',
+      currency: 'NGN',
+    });
+    const reply = makeReply();
+
+    await controller.checkoutPage(TXN_ID, 'a@b.com', reply as never);
+
+    const html = reply.body as string;
+    expect(reply.statusCode).toBe(200);
+    expect(html).toContain('action="https://sandbox.interswitchng.com/collections/w/pay"');
+    expect(html).toContain('&quot;&gt;&lt;script&gt;');
+    expect(html).not.toContain('"><script>');
+    expect(buildCheckoutForm).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ amountPaise: BigInt(500000), email: 'a@b.com' }),
+    );
+  });
+
+  it('drops a malformed email instead of passing it through', async () => {
+    findById.mockResolvedValue({
+      id: TXN_ID,
+      gateway: PaymentGateway.INTERSWITCH,
+      state: TransactionState.AUTH_INITIATED,
+      amountPaise: '1',
+      currency: 'NGN',
+    });
+
+    await controller.checkoutPage(TXN_ID, '"><x', makeReply() as never);
+
+    expect(buildCheckoutForm).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ email: undefined }),
+    );
+  });
+
+  it('404s for a transaction on another gateway', async () => {
+    findById.mockResolvedValue({ id: TXN_ID, gateway: PaymentGateway.PAYSTACK });
+    const reply = makeReply();
+
+    await controller.checkoutPage(TXN_ID, undefined, reply as never);
+
+    expect(reply.statusCode).toBe(404);
+  });
+
+  it('409s once the payment is no longer awaiting the payer', async () => {
+    findById.mockResolvedValue({
+      id: TXN_ID,
+      gateway: PaymentGateway.INTERSWITCH,
+      state: TransactionState.CAPTURED,
+    });
+    const reply = makeReply();
+
+    await controller.checkoutPage(TXN_ID, undefined, reply as never);
+
+    expect(reply.statusCode).toBe(409);
+  });
+
+  it('redirects the returning browser to the configured returnUrl', async () => {
+    const reply = makeReply();
+
+    await controller.returnFromInterswitch({ txnref: TXN_ID, resp: '00' }, reply as never);
+
+    expect(reply.statusCode).toBe(303);
+    expect(reply.headers['Location']).toBe(`https://portal.example.com/transactions/${TXN_ID}`);
+  });
+
+  it('ignores a non-UUID txnref rather than redirecting', async () => {
+    const reply = makeReply();
+
+    await controller.returnFromInterswitch({ txnref: '../../evil' }, reply as never);
+
+    expect(reply.statusCode).toBe(200);
+    expect(reply.headers['Location']).toBeUndefined();
+  });
+});

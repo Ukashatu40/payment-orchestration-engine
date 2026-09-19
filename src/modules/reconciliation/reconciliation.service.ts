@@ -129,7 +129,11 @@ export class ReconciliationService {
 
     try {
       const adapter = this.gatewayRegistry.get(transaction.gateway);
-      const response = await adapter.fetchStatus(transaction.gatewayReference, transaction.traceId);
+      const response = await adapter.fetchStatus(
+        transaction.gatewayReference,
+        transaction.traceId,
+        BigInt(transaction.amountPaise),
+      );
       gatewayStatus = response.status;
     } catch (err) {
       this.logger.warn('Could not fetch gateway status', {

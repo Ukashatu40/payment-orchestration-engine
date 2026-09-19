@@ -28,6 +28,9 @@ export class AuthGuard implements CanActivate {
   private readonly validApiKeys: Set<string>;
   private readonly publicPaths = [
     '/api/v1/webhooks/',
+    // Interswitch's hosted page POSTs the payer's browser back here; the
+    // checkout page is opened by the payer. Neither can carry credentials.
+    '/api/v1/checkout/',
     '/api/v1/health',
     '/api/v1/auth/login',
     '/api/v1/auth/refresh',

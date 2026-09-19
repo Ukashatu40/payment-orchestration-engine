@@ -1,7 +1,6 @@
 // src/modules/gateways/adapters/interswitch.adapter.ts
 
 import { Injectable } from '@nestjs/common';
-import axios from 'axios';
 import { BaseHttpAdapter } from './base-http.adapter';
 import {
   IGatewayAdapter,
@@ -20,39 +19,44 @@ import { GatewayConfigRepository } from '../repositories/gateway-config.reposito
 import { GatewayConfig } from '../entities/gateway-config.entity';
 import { GatewayUnavailableException } from '../../../common/exceptions';
 
-interface InterswitchTokenResponse {
-  access_token?: string;
-  expires_in?: number;
+interface InterswitchTransactionResponse {
+  ResponseCode?: string;
+  ResponseDescription?: string;
+  Amount?: number | string;
+  MerchantReference?: string;
+  PaymentReference?: string;
 }
 
-interface InterswitchResponse {
-  responseCode?: string;
-  data?: {
-    transactionReference?: string;
-    status?: string;
-    amount?: number;
-    refundReference?: string;
-  };
+export interface InterswitchCheckoutForm {
+  action: string;
+  fields: Record<string, string>;
 }
+
+// ISO 4217 numeric codes Interswitch expects in the `currency` field.
+const CURRENCY_CODES: Record<string, string> = { NGN: '566', USD: '840' };
 
 // ----------------------------------------------------------------
-// Interswitch uses OAuth2 client-credentials — a bearer token must be
-// fetched from a token endpoint before any transaction call, unlike
-// Paystack/Flutterwave/Opay's per-request static/signed credentials.
-// Credential layout: gateway_config.api_key holds the OAuth2 client
-// ID, gateway_config.metadata.clientSecret holds the client secret.
-// The resulting token is cached in-memory on this adapter instance
-// with an expiry check, refreshed when it's within 60s of expiring.
+// Interswitch Web Checkout (https://docs.interswitchgroup.com/docs/web-checkout)
+// has NO server-side "create payment" call: the payer's browser must
+// POST a form (merchant_code, pay_item_id, txn_ref, amount, currency,
+// site_redirect_url, ...) to Interswitch's hosted page. So authorise()
+// makes no network call — it returns a checkoutUrl pointing at this
+// backend's own /api/v1/checkout/interswitch/:transactionId page, which
+// loads the transaction and auto-submits that form (see
+// checkout.controller.ts). Our transactionId IS the txn_ref, so both the
+// redirect callback and the TRANSACTION.COMPLETED webhook
+// (data.merchantReference) resolve straight back to it.
 //
-// Interswitch's public API surface has shifted between product lines
-// historically (Webpay / Quickteller / Passport) — the endpoint paths
-// and response shapes below are a best-effort implementation and MUST
-// be reconfirmed against Interswitch's current merchant docs before
-// production use. Of the four gateways added here, this one carries
-// the most implementation risk.
+// Config (gateway_config.metadata): merchantCode, payItemId, baseUrl
+// (https://sandbox.interswitchng.com), publicBaseUrl (this backend's
+// public origin; falls back to PUBLIC_BASE_URL / RENDER_EXTERNAL_URL),
+// returnUrl (page the payer lands on, may use {transactionId}).
+// Webhook signature secret lives in gateway_config.webhook_secret.
 //
-// Verve cards reuse the existing CARD_CREDIT/CARD_DEBIT payment
-// methods — no separate method mapping needed.
+// Status is verified server-side with GET
+// /collections/api/v1/gettransaction.json (ResponseCode "00" = approved).
+// The refund/void APIs are not documented for this product, so they are
+// reported as unsupported rather than guessed at.
 // ----------------------------------------------------------------
 @Injectable()
 export class InterswitchAdapter extends BaseHttpAdapter implements IGatewayAdapter {
@@ -65,130 +69,113 @@ export class InterswitchAdapter extends BaseHttpAdapter implements IGatewayAdapt
     PaymentMethod.VIRTUAL_ACCOUNT,
   ];
 
-  private tokenCache: { accessToken: string; expiresAt: number } | null = null;
-
   constructor(gatewayConfigRepo: GatewayConfigRepository) {
     super(InterswitchAdapter.name, PaymentGateway.INTERSWITCH, gatewayConfigRepo);
   }
 
-  private async getAccessToken(config: GatewayConfig): Promise<string> {
-    const now = Date.now();
-
-    if (this.tokenCache && this.tokenCache.expiresAt - 60_000 > now) {
-      return this.tokenCache.accessToken;
-    }
-
-    const clientId = config.apiKey ?? '';
-    const clientSecret = (config.metadata?.['clientSecret'] as string) ?? '';
-    const baseURL = (config.metadata?.['baseUrl'] as string) ?? '';
-    const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-
-    let tokenResponse: InterswitchTokenResponse;
-
-    try {
-      // Not routed through BaseHttpAdapter.buildHttpClient — that
-      // helper assumes an already-issued bearer token, which is
-      // exactly what this call is fetching.
-      const res = await axios.post<InterswitchTokenResponse>(
-        `${baseURL}/passport/oauth/token`,
-        'grant_type=client_credentials',
-        {
-          headers: {
-            Authorization: `Basic ${basicAuth}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          timeout: config.timeoutMs,
-        },
-      );
-      tokenResponse = res.data;
-    } catch (err) {
-      // Previously a bare `catch {}` that discarded the real cause
-      // (HTTP status, response body, DNS/network error) entirely,
-      // replacing it with a fixed string — made a bad client
-      // ID/secret, a wrong base URL, and a genuine outage all look
-      // identical in the logs. Surface what actually happened.
-      const detail = axios.isAxiosError(err)
-        ? `HTTP ${err.response?.status ?? 'network error'}: ${JSON.stringify(err.response?.data) ?? err.message}`
-        : err instanceof Error
-          ? err.message
-          : 'unknown error';
-      this.logger.error('Failed to obtain Interswitch OAuth2 access token', { detail });
+  private requireMetadata(config: GatewayConfig, key: string): string {
+    const value = config.metadata?.[key];
+    if (typeof value !== 'string' || value.length === 0) {
       throw new GatewayUnavailableException(
         this.gateway,
-        `Failed to obtain Interswitch OAuth2 access token: ${detail}`,
+        `Interswitch gateway_config.metadata.${key} is not set — seed it with scripts/seed-gateway-secrets.ts`,
       );
     }
+    return value;
+  }
 
-    const accessToken = tokenResponse.access_token;
-    const expiresInSeconds = tokenResponse.expires_in ?? 3600;
-
-    if (!accessToken) {
+  publicBaseUrl(config: GatewayConfig): string {
+    const fromConfig = config.metadata?.['publicBaseUrl'];
+    const value =
+      (typeof fromConfig === 'string' && fromConfig) ||
+      process.env.PUBLIC_BASE_URL ||
+      process.env.RENDER_EXTERNAL_URL;
+    if (!value) {
       throw new GatewayUnavailableException(
         this.gateway,
-        'Interswitch token response missing access_token',
+        "Interswitch needs this backend's public URL — set gateway_config.metadata.publicBaseUrl or PUBLIC_BASE_URL",
       );
     }
+    return value.replace(/\/+$/, '');
+  }
 
-    this.tokenCache = {
-      accessToken,
-      expiresAt: now + expiresInSeconds * 1000,
+  // The fields the payer's browser posts to Interswitch's hosted page.
+  buildCheckoutForm(
+    config: GatewayConfig,
+    p: { transactionId: string; amountPaise: bigint; currency: string; email?: string },
+  ): InterswitchCheckoutForm {
+    const currencyCode = CURRENCY_CODES[p.currency];
+    if (!currencyCode) {
+      throw new GatewayUnavailableException(
+        this.gateway,
+        `Interswitch checkout does not support currency ${p.currency}`,
+      );
+    }
+    const baseURL = this.requireMetadata(config, 'baseUrl').replace(/\/+$/, '');
+
+    return {
+      action: `${baseURL}/collections/w/pay`,
+      fields: {
+        merchant_code: this.requireMetadata(config, 'merchantCode'),
+        pay_item_id: this.requireMetadata(config, 'payItemId'),
+        txn_ref: p.transactionId,
+        amount: p.amountPaise.toString(),
+        currency: currencyCode,
+        site_redirect_url: `${this.publicBaseUrl(config)}/api/v1/checkout/interswitch/return`,
+        ...(p.email && { cust_email: p.email }),
+      },
     };
-
-    return accessToken;
   }
 
   async authorise(req: GatewayAuthRequest): Promise<GatewayAuthResponse> {
     const config = await this.loadConfig();
-    const token = await this.getAccessToken(config);
-    const http = this.buildHttpClient(config, {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    });
+    // Fail fast on missing config so the payment errors here rather than
+    // handing the payer a checkout link that cannot work.
+    this.requireMetadata(config, 'merchantCode');
+    this.requireMetadata(config, 'payItemId');
 
-    // The confirmed webhook payload (docs.interswitchgroup.com/v1.1/
-    // docs/webhooks) echoes our reference back as data.merchantReference,
-    // not a metadata passthrough field — so our transactionId IS the
-    // merchant_reference sent here, letting the webhook processor
-    // resolve it directly.
-    const reference = req.transactionId;
-
-    const body = await this.request<InterswitchResponse>(
-      () =>
-        http.post<InterswitchResponse>('/api/v2/payments', {
-          merchant_reference: reference,
-          amount: Number(req.amountPaise), // kobo
-          currency: req.currency,
-        }),
-      req.transactionId,
-      config.timeoutMs,
-    );
-
-    const data = body.data ?? {};
+    const query = req.customerEmail ? `?email=${encodeURIComponent(req.customerEmail)}` : '';
 
     return {
-      gatewayPaymentId: data.transactionReference ?? reference,
-      gatewayReference: data.transactionReference ?? reference,
+      gatewayPaymentId: req.transactionId,
+      gatewayReference: req.transactionId,
       status: 'pending',
-      rawResponse: body as unknown as Record<string, unknown>,
+      checkoutUrl: `${this.publicBaseUrl(config)}/api/v1/checkout/interswitch/${req.transactionId}${query}`,
+      rawResponse: { flow: 'web_checkout_redirect' },
     };
+  }
+
+  private async queryTransaction(
+    config: GatewayConfig,
+    txnRef: string,
+    amountPaise: bigint,
+    traceId: string,
+  ): Promise<InterswitchTransactionResponse> {
+    const http = this.buildHttpClient(config, { 'Content-Type': 'application/json' });
+
+    return this.request<InterswitchTransactionResponse>(
+      () =>
+        http.get<InterswitchTransactionResponse>('/collections/api/v1/gettransaction.json', {
+          params: {
+            merchantcode: this.requireMetadata(config, 'merchantCode'),
+            transactionreference: txnRef,
+            amount: amountPaise.toString(),
+          },
+        }),
+      traceId,
+      config.timeoutMs,
+    );
   }
 
   async capture(req: GatewayCaptureRequest): Promise<GatewayCaptureResponse> {
     const config = await this.loadConfig();
-    const token = await this.getAccessToken(config);
-    const http = this.buildHttpClient(config, { Authorization: `Bearer ${token}` });
-
-    const body = await this.request<InterswitchResponse>(
-      () =>
-        http.get<InterswitchResponse>(
-          `/api/v2/payments/${encodeURIComponent(req.gatewayPaymentId)}`,
-        ),
+    const body = await this.queryTransaction(
+      config,
+      req.gatewayPaymentId,
+      req.amountPaise,
       req.transactionId,
-      config.timeoutMs,
     );
-
-    const data = body.data ?? {};
-    const captured = data.status === 'SUCCESSFUL';
+    const captured = body.ResponseCode === '00';
 
     return {
       gatewayReference: req.gatewayPaymentId,
@@ -198,36 +185,23 @@ export class InterswitchAdapter extends BaseHttpAdapter implements IGatewayAdapt
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await -- unsupported operation, no network call
   async refund(req: GatewayRefundRequest): Promise<GatewayRefundResponse> {
-    const config = await this.loadConfig();
-    const token = await this.getAccessToken(config);
-    const http = this.buildHttpClient(config, {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
+    this.logger.warn('Refund requested but no Interswitch Web Checkout refund API is confirmed', {
+      transactionId: req.transactionId,
     });
 
-    const body = await this.request<InterswitchResponse>(
-      () =>
-        http.post<InterswitchResponse>(
-          `/api/v2/payments/${encodeURIComponent(req.gatewayPaymentId)}/refund`,
-          {
-            amount: Number(req.amountPaise),
-          },
-        ),
-      req.transactionId,
-      config.timeoutMs,
-    );
-
-    const data = body.data ?? {};
-
     return {
-      gatewayRefundId: data.refundReference ?? this.generateId('isw_rfnd'),
-      status: 'refunded',
-      rawResponse: body as unknown as Record<string, unknown>,
+      gatewayRefundId: this.generateId('isw_rfnd'),
+      status: 'failed',
+      rawResponse: {
+        error:
+          'Interswitch refunds are not implemented — process them in the Interswitch dashboard',
+      },
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- IGatewayAdapter.void is async; this implementation never awaits
+  // eslint-disable-next-line @typescript-eslint/require-await -- unsupported operation, no network call
   async void(req: GatewayVoidRequest): Promise<GatewayVoidResponse> {
     this.logger.warn('Void requested but Interswitch void/cancel API is unconfirmed', {
       transactionId: req.transactionId,
@@ -242,30 +216,29 @@ export class InterswitchAdapter extends BaseHttpAdapter implements IGatewayAdapt
     };
   }
 
-  async fetchStatus(gatewayPaymentId: string, traceId: string): Promise<GatewayStatusResponse> {
+  async fetchStatus(
+    gatewayPaymentId: string,
+    traceId: string,
+    amountPaise: bigint = BigInt(0),
+  ): Promise<GatewayStatusResponse> {
     const config = await this.loadConfig();
-    const token = await this.getAccessToken(config);
-    const http = this.buildHttpClient(config, { Authorization: `Bearer ${token}` });
+    const body = await this.queryTransaction(config, gatewayPaymentId, amountPaise, traceId);
 
-    const body = await this.request<InterswitchResponse>(
-      () =>
-        http.get<InterswitchResponse>(`/api/v2/payments/${encodeURIComponent(gatewayPaymentId)}`),
-      traceId,
-      config.timeoutMs,
-    );
-
-    const data = body.data ?? {};
-    const statusMap: Record<string, GatewayStatusResponse['status']> = {
-      SUCCESSFUL: 'captured',
-      FAILED: 'failed',
-      PENDING: 'authorised',
-      EXPIRED: 'expired',
-    };
+    // 00 approved. 09 (in progress) and Z25 ("Transaction not Found" — the
+    // payer has not completed checkout yet) are still pending, NOT failures.
+    // Anything else (Z6 cancelled, 51, ...) is a failure.
+    const pendingCodes = ['09', 'Z25'];
+    const status: GatewayStatusResponse['status'] =
+      body.ResponseCode === '00'
+        ? 'captured'
+        : pendingCodes.includes(body.ResponseCode ?? '')
+          ? 'authorised'
+          : 'failed';
 
     return {
       gatewayPaymentId,
-      status: (data.status ? statusMap[data.status] : undefined) ?? 'failed',
-      amountPaise: data.amount !== undefined ? BigInt(data.amount) : BigInt(0),
+      status,
+      amountPaise: body.Amount !== undefined ? BigInt(body.Amount) : BigInt(0),
       rawResponse: body as unknown as Record<string, unknown>,
     };
   }

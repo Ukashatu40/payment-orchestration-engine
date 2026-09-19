@@ -6,6 +6,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { DatabaseModule } from './database/database.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { CheckoutModule } from './modules/checkout/checkout.module';
 import { GatewaysModule } from './modules/gateways/gateways.module';
 import { IdempotencyModule } from './modules/idempotency/idempotency.module';
 import { ReconciliationModule } from './modules/reconciliation/reconciliation.module';
@@ -34,6 +35,7 @@ import { AppController } from './app.controller';
     GatewaysModule,
     TransactionsModule,
     WebhooksModule,
+    CheckoutModule,
     ReconciliationModule,
   ],
 
