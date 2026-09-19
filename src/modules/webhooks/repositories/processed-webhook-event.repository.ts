@@ -44,4 +44,10 @@ export class ProcessedWebhookEventRepository {
   ): Promise<ProcessedWebhookEvent | null> {
     return this.repo.findOne({ where: { gateway, eventId } });
   }
+
+  // Releases the dedup marker after a failed processing attempt so the
+  // retry isn't discarded as a duplicate of its own earlier attempt.
+  async remove(gateway: PaymentGateway, eventId: string): Promise<void> {
+    await this.repo.delete({ gateway, eventId });
+  }
 }

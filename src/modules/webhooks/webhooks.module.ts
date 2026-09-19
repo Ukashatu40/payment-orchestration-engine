@@ -4,6 +4,7 @@ import { Module } from '@nestjs/common';
 import { WebhookSignatureService } from './verification/webhook-signature.service';
 import { WebhookQueueService } from './webhook-queue.service';
 import { WebhookProcessorService } from './webhook-processor.service';
+import { WebhookWorkerService } from './webhook-worker.service';
 import { WebhookQueueRepository } from './repositories/webhook-queue.repository';
 import { ProcessedWebhookEventRepository } from './repositories/processed-webhook-event.repository';
 import { WebhooksController } from './webhooks.controller';
@@ -17,6 +18,7 @@ import { UsersModule } from '../users/users.module';
     WebhookSignatureService,
     WebhookQueueService,
     WebhookProcessorService,
+    WebhookWorkerService,
     WebhookQueueRepository,
     ProcessedWebhookEventRepository,
   ],

@@ -7,6 +7,7 @@ import { ProcessedWebhookEventRepository } from './repositories/processed-webhoo
 import { TransactionRepository } from '../transactions/repositories/transaction.repository';
 import { TransactionStateMachineService } from '../transactions/state-machine/transaction-state-machine.service';
 import { WebhookQueue } from './entities/webhook-queue.entity';
+import { Transaction } from '../transactions/entities/transaction.entity';
 import { TransactionState, PaymentGateway } from '../../common/enums';
 
 // Maps gateway event types to state machine transitions
@@ -43,6 +44,11 @@ export class WebhookProcessorService {
 
     await this.queueService.markProcessing(queueId);
 
+    // Set once this attempt has claimed the dedup marker, so a failure
+    // releases only a marker this attempt created (never a genuine
+    // duplicate's, which belongs to the run that actually processed it).
+    let claimedDedupMarker = false;
+
     try {
       // Step 1: Deduplication — atomic check + insert (Section A5.4)
       // If this event ID was already processed, return immediately.
@@ -63,6 +69,8 @@ export class WebhookProcessorService {
           manager,
         );
       });
+
+      claimedDedupMarker = isNew;
 
       if (!isNew) {
         this.logger.log('Duplicate webhook ignored', {
@@ -114,12 +122,16 @@ export class WebhookProcessorService {
         return;
       }
 
-      // Step 5: Check if transition is valid from current state.
-      // If not valid (e.g. webhook arrives after API response already
-      // set the state), the state machine handles it gracefully (FS-06).
-      const canTransition = this.stateMachine.canTransition(transaction.state, transition.toState);
+      // Step 5: Work out the path from the current state to the target.
+      // Gateways that auto-capture (Paystack, Flutterwave, ...) report a
+      // single "paid" event, but the state machine has no direct edge from
+      // AUTH_INITIATED/AUTHORISED to CAPTURED — the intermediate states
+      // are walked (and logged) here. If the target isn't reachable at all
+      // (e.g. webhook arrives after the API already advanced the state),
+      // the state machine handles it gracefully (FS-06).
+      const path = this.pathTo(transaction.state, transition.toState);
 
-      if (!canTransition) {
+      if (!path) {
         this.logger.log('Webhook transition not applicable — state already advanced', {
           gateway,
           eventId,
@@ -130,15 +142,27 @@ export class WebhookProcessorService {
         return;
       }
 
-      // Step 6: Apply the state transition
-      await this.stateMachine.transition(transaction.id, transition.toState, {
-        event: transition.event,
-        triggeredBy: 'webhook_processor',
-        traceId: transaction.traceId,
-        gatewayReference: eventId,
-        gatewayResponse: payload,
-        metadata: { queueId, gateway, eventType },
-      });
+      // Step 6: Apply the state transition(s)
+      for (const [i, toState] of path.entries()) {
+        const isFinal = i === path.length - 1;
+        await this.stateMachine.transition(transaction.id, toState, {
+          event: isFinal ? transition.event : `${transition.event}_VIA_${toState}`,
+          triggeredBy: 'webhook_processor',
+          traceId: transaction.traceId,
+          gatewayReference: eventId,
+          gatewayResponse: payload,
+          metadata: { queueId, gateway, eventType },
+        });
+      }
+
+      // The API capture path records capturedPaise itself; a webhook-driven
+      // capture must too, or a fully captured payment reads as ₦0 captured
+      // (and later refund-limit checks see nothing to refund).
+      if (transition.toState === TransactionState.CAPTURED) {
+        await this.dataSource
+          .getRepository(Transaction)
+          .update({ id: transaction.id }, { capturedPaise: BigInt(transaction.amountPaise) });
+      }
 
       await this.queueService.markCompleted(queueId);
 
@@ -160,9 +184,32 @@ export class WebhookProcessorService {
         retryCount,
       });
 
+      if (claimedDedupMarker) {
+        await this.processedEventRepo.remove(gateway, eventId);
+      }
+
       // Exponential backoff retry — moves to DLQ after max retries
       await this.queueService.markFailed(queueId, error.message, retryCount + 1);
     }
+  }
+
+  // Direct edge if the state machine allows it; otherwise, for CAPTURED
+  // only, the auto-capture chain. Returns null when unreachable.
+  private pathTo(from: TransactionState, to: TransactionState): TransactionState[] | null {
+    if (this.stateMachine.canTransition(from, to)) return [to];
+
+    if (to === TransactionState.CAPTURED) {
+      const chain = [
+        TransactionState.AUTH_INITIATED,
+        TransactionState.AUTHORISED,
+        TransactionState.CAPTURE_INITIATED,
+        TransactionState.CAPTURED,
+      ];
+      const idx = chain.indexOf(from);
+      if (idx !== -1 && idx < chain.length - 1) return chain.slice(idx + 1);
+    }
+
+    return null;
   }
 
   // ----------------------------------------------------------------
@@ -369,20 +416,24 @@ export class WebhookProcessorService {
     transaction: { amountPaise: bigint; gatewayReference: string | null },
   ): void {
     const webhookAmount = this.extractAmount(gateway, payload);
+    // pg returns BIGINT columns as strings at runtime despite the
+    // `bigint` type annotation, so a strict !== against the raw
+    // entity value is always true — normalise before comparing.
+    const expectedAmount = BigInt(transaction.amountPaise);
 
     if (
       webhookAmount !== null &&
       webhookAmount !== BigInt(0) &&
-      webhookAmount !== transaction.amountPaise
+      webhookAmount !== expectedAmount
     ) {
       this.logger.warn('Webhook amount mismatch — possible replay attack', {
         gateway,
         webhookAmount: webhookAmount.toString(),
-        expectedAmount: transaction.amountPaise.toString(),
+        expectedAmount: expectedAmount.toString(),
       });
       throw new Error(
         `Webhook amount mismatch: received ${webhookAmount}, ` +
-          `expected ${transaction.amountPaise}`,
+          `expected ${expectedAmount}`,
       );
     }
   }
