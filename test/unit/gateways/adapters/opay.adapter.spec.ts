@@ -27,7 +27,12 @@ function mockConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
     rateLimitPerSec: 100,
     apiKey: 'merchant-id-xxx',
     webhookSecret: null,
-    metadata: { baseUrl: BASE_URL, secretKey: 'secret-key-xxx' },
+    metadata: {
+      baseUrl: BASE_URL,
+      secretKey: 'secret-key-xxx',
+      publicKey: 'public-key-xxx',
+      returnUrl: 'https://merchant.example.com/return',
+    },
     ...overrides,
   };
 }
@@ -63,20 +68,28 @@ describe('OpayAdapter', () => {
   });
 
   describe('authorise', () => {
-    it('signs the request and returns pending on success', async () => {
+    it('authenticates create with the public key and returns the cashier URL', async () => {
       let capturedHeaders: Record<string, string> = {};
       nock(BASE_URL)
-        .post('/api/v1/cashier/create')
+        .post('/api/v1/international/cashier/create')
         .reply(function () {
           capturedHeaders = this.req.headers;
-          return [200, { code: '00000', message: 'ok', data: { orderNo: 'opay_order_1' } }];
+          return [
+            200,
+            {
+              code: '00000',
+              message: 'ok',
+              data: { orderNo: 'opay_order_1', cashierUrl: 'https://cashier.example/pay' },
+            },
+          ];
         });
 
       const result = await adapter.authorise(baseAuthRequest);
 
       expect(result.status).toBe('pending');
       expect(result.gatewayPaymentId).toBe('opay_order_1');
-      expect(capturedHeaders['authorization']).toMatch(/^Bearer /);
+      expect(result.checkoutUrl).toBe('https://cashier.example/pay');
+      expect(capturedHeaders['authorization']).toBe('Bearer public-key-xxx');
       expect(capturedHeaders['merchantid']).toBe('merchant-id-xxx');
     });
 
@@ -86,7 +99,7 @@ describe('OpayAdapter', () => {
       // as the reference itself for the webhook to resolve it back.
       let capturedBody: { amount: { total: number }; reference: string } | undefined;
       nock(BASE_URL)
-        .post('/api/v1/cashier/create', (body: typeof capturedBody) => {
+        .post('/api/v1/international/cashier/create', (body: typeof capturedBody) => {
           capturedBody = body;
           return true;
         })
@@ -98,15 +111,24 @@ describe('OpayAdapter', () => {
       expect(capturedBody?.reference).toBe('txn-1');
     });
 
+    it('fails clearly when returnUrl/publicKey are not configured', async () => {
+      findByGateway.mockResolvedValue(mockConfig({ metadata: { baseUrl: BASE_URL } }));
+
+      await expect(adapter.authorise(baseAuthRequest)).rejects.toThrow(/metadata\.returnUrl/);
+    });
+
     it('maps a timeout to GatewayTimeoutException', async () => {
       findByGateway.mockResolvedValue(mockConfig({ timeoutMs: 50 }));
-      nock(BASE_URL).post('/api/v1/cashier/create').delay(200).reply(200, { code: '00000' });
+      nock(BASE_URL)
+        .post('/api/v1/international/cashier/create')
+        .delay(200)
+        .reply(200, { code: '00000' });
 
       await expect(adapter.authorise(baseAuthRequest)).rejects.toThrow(GatewayTimeoutException);
     });
 
     it('maps a 5xx response to GatewayUnavailableException', async () => {
-      nock(BASE_URL).post('/api/v1/cashier/create').reply(500, { code: '99999' });
+      nock(BASE_URL).post('/api/v1/international/cashier/create').reply(500, { code: '99999' });
 
       await expect(adapter.authorise(baseAuthRequest)).rejects.toThrow(GatewayUnavailableException);
     });
@@ -115,7 +137,7 @@ describe('OpayAdapter', () => {
   describe('fetchStatus', () => {
     it('maps SUCCESS to captured and reads amount.total', async () => {
       nock(BASE_URL)
-        .post('/api/v1/cashier/status')
+        .post('/api/v1/international/cashier/status')
         .reply(200, {
           code: '00000',
           message: 'ok',
@@ -130,7 +152,7 @@ describe('OpayAdapter', () => {
 
     it('maps FAIL to failed', async () => {
       nock(BASE_URL)
-        .post('/api/v1/cashier/status')
+        .post('/api/v1/international/cashier/status')
         .reply(200, { code: '00000', message: 'ok', data: { status: 'FAIL' } });
 
       const result = await adapter.fetchStatus('opay_order_1', 'trace-1');

@@ -15,6 +15,7 @@ export interface GatewayAuthRequest {
   traceId: string;
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
+  customerEmail?: string;
 }
 
 export interface GatewayAuthResponse {
@@ -22,6 +23,8 @@ export interface GatewayAuthResponse {
   gatewayOrderId?: string;
   gatewayReference: string;
   status: 'authorised' | 'declined' | 'pending';
+  // Hosted-checkout URL for redirect-based gateways; the payer must open it to pay.
+  checkoutUrl?: string;
   rawResponse: Record<string, unknown>;
 }
 

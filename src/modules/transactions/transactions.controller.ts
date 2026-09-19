@@ -39,6 +39,7 @@ import { RefundResponseDto } from './dto/refund-response.dto';
 import { TimelineEntryDto } from './dto/timeline-entry.dto';
 import { CurrentMerchant } from '../auth/decorators/current-merchant.decorator';
 import { CurrentPrincipal } from '../auth/decorators/current-principal.decorator';
+import { RequireCsrf } from '../auth/decorators/require-csrf.decorator';
 import { type RequestPrincipal } from '../auth/interfaces/jwt-payload.interface';
 import { UserRole, TransactionState, PaymentGateway } from '../../common/enums';
 import { Transaction } from './entities/transaction.entity';
@@ -49,6 +50,7 @@ export class TransactionsController {
 
   // POST /api/v1/payments
   @Post()
+  @RequireCsrf()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Initiate a new payment' })
   @ApiHeader({
@@ -63,7 +65,26 @@ export class TransactionsController {
     required: true,
     description: 'UUID v4 idempotency key',
   })
-  @ApiResponse({ status: 201, description: 'Payment initiated successfully' })
+  @ApiHeader({
+    name: 'x-mock-response',
+    required: false,
+    description: 'Test/scenario tooling only — forces a specific gateway mock response.',
+  })
+  @ApiHeader({
+    name: 'x-mock-delay-ms',
+    required: false,
+    description: 'Test/scenario tooling only — simulates gateway latency.',
+  })
+  @ApiHeader({
+    name: 'x-mock-gateway-down',
+    required: false,
+    description: 'Test/scenario tooling only — simulates the gateway being unavailable.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Payment initiated successfully',
+    type: PaymentResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Validation error' })
   @ApiResponse({ status: 401, description: 'Invalid or missing credentials' })
   @ApiResponse({
@@ -92,6 +113,7 @@ export class TransactionsController {
       paymentMethod: body.paymentMethod,
       idempotencyKey,
       traceId,
+      customerEmail: body.customerEmail,
       metadata: {
         ...body.metadata,
         ...(mockResponse && { 'x-mock-response': mockResponse }),
@@ -173,6 +195,7 @@ export class TransactionsController {
 
   // POST /api/v1/payments/:id/capture
   @Post(':id/capture')
+  @RequireCsrf()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Capture an authorised payment' })
   @ApiResponse({ status: 200, description: 'Payment captured', type: PaymentResponseDto })
@@ -208,6 +231,7 @@ export class TransactionsController {
 
   // POST /api/v1/payments/:id/void
   @Post(':id/void')
+  @RequireCsrf()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Void an authorised payment' })
   @ApiResponse({ status: 200, description: 'Payment voided', type: PaymentResponseDto })
@@ -229,6 +253,7 @@ export class TransactionsController {
 
   // POST /api/v1/payments/:id/refund
   @Post(':id/refund')
+  @RequireCsrf()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refund a completed payment' })
   @ApiResponse({ status: 200, description: 'Payment refunded', type: PaymentResponseDto })

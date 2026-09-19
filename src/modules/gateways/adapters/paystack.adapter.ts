@@ -22,6 +22,7 @@ interface PaystackResponse {
   message: string;
   data?: {
     reference?: string;
+    authorization_url?: string;
     status?: string;
     amount?: number;
     id?: number | string;
@@ -70,11 +71,13 @@ export class PaystackAdapter extends BaseHttpAdapter implements IGatewayAdapter 
     const body = await this.request<PaystackResponse>(
       () =>
         http.post<PaystackResponse>('/transaction/initialize', {
-          // Paystack requires a customer email; the orchestration
-          // layer doesn't carry one today, so a merchant-scoped
-          // placeholder is used. Replace with the real customer email
-          // once InitiatePaymentDto/GatewayAuthRequest carries one.
-          email: `${req.merchantId}@merchant.payflow.invalid`,
+          // Paystack requires a customer email and validates it against
+          // a real-looking TLD — RFC 2606 "guaranteed invalid" domains
+          // like *.invalid are correctly rejected by Paystack's own
+          // validator, so the placeholder fallback (used only when the
+          // caller didn't supply a real customerEmail) must use a
+          // syntactically-plausible domain instead.
+          email: req.customerEmail ?? `${req.merchantId}@merchant.payflow.com`,
           amount: req.amountPaise.toString(), // kobo — no conversion needed
           currency: req.currency,
           reference,
@@ -93,6 +96,7 @@ export class PaystackAdapter extends BaseHttpAdapter implements IGatewayAdapter 
       gatewayPaymentId: data.reference ?? reference,
       gatewayReference: data.reference ?? reference,
       status: 'pending',
+      checkoutUrl: data.authorization_url,
       rawResponse: body as unknown as Record<string, unknown>,
     };
   }

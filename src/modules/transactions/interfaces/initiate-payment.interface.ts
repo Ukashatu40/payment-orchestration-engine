@@ -11,6 +11,7 @@ export interface InitiatePaymentDto {
   idempotencyKey: string;
   traceId: string;
   metadata?: Record<string, unknown>;
+  customerEmail?: string;
 }
 
 export interface CapturePaymentDto {

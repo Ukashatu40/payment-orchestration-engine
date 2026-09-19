@@ -81,6 +81,22 @@ export abstract class BaseHttpAdapter {
             `HTTP ${err.response?.status ?? 'network error'}: ${err.message}`,
           );
         }
+
+        // A non-429 4xx is intentionally rethrown as-is (see class
+        // comment) so a specific adapter can interpret it — e.g. map a
+        // particular gateway error code to a declined payment, rather
+        // than every 4xx meaning "gateway unavailable" (it isn't down,
+        // it rejected this specific request). No adapter currently
+        // does that interpretation, so this reaches
+        // GlobalExceptionFilter as a bare AxiosError and becomes an
+        // opaque 500 with zero detail. Logging the gateway's actual
+        // response body here — without changing what gets thrown — is
+        // the only way to see what it objected to.
+        this.logger.error(`${this.gateway} rejected the request`, {
+          status: err.response.status,
+          responseBody: err.response.data,
+          transactionId,
+        });
       }
 
       throw err;

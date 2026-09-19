@@ -18,6 +18,7 @@ import {
 import { PaymentGateway, PaymentMethod } from '../../../common/enums';
 import { GatewayConfigRepository } from '../repositories/gateway-config.repository';
 import { GatewayConfig } from '../entities/gateway-config.entity';
+import { GatewayUnavailableException } from '../../../common/exceptions';
 
 interface OpayResponse {
   code: string;
@@ -27,6 +28,7 @@ interface OpayResponse {
     reference?: string;
     status?: string;
     refundNo?: string;
+    cashierUrl?: string;
     amount?: { total?: number; currency?: string };
   };
 }
@@ -44,10 +46,16 @@ interface OpayResponse {
 // the payer), so authorise() returns 'pending' and completion is
 // webhook-driven, same as Paystack/Flutterwave.
 //
-// Endpoint paths/response field names/signing canonicalization below
-// are a best-effort implementation and MUST be reconfirmed against
-// Opay's current merchant API docs before production use — this is
-// the least standardized of the four integrations.
+// Endpoints follow doc.opaycheckout.com (all under
+// /api/v1/international/...). cashier/create authenticates with the
+// merchant PUBLIC key as the Bearer token; every other call uses the
+// HMAC-SHA512 body signature. Extra metadata keys read by this adapter:
+//   publicKey  — Bearer token for cashier/create
+//   returnUrl  — where Opay sends the payer after checkout (required)
+//   callbackUrl — optional webhook URL override
+// Signing canonicalization and the exact envelope of the status/refund
+// responses are only partly covered by the docs — verify against the
+// sandbox before production.
 // ----------------------------------------------------------------
 @Injectable()
 export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
@@ -77,6 +85,17 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
     };
   }
 
+  private requireMetadata(config: GatewayConfig, key: string): string {
+    const value = config.metadata?.[key];
+    if (typeof value !== 'string' || value.length === 0) {
+      throw new GatewayUnavailableException(
+        this.gateway,
+        `Opay gateway_config.metadata.${key} is not set — seed it with scripts/seed-gateway-secrets.ts`,
+      );
+    }
+    return value;
+  }
+
   async authorise(req: GatewayAuthRequest): Promise<GatewayAuthResponse> {
     const config = await this.loadConfig();
     // The confirmed Opay callback payload (doc.opaycheckout.com/
@@ -90,17 +109,22 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
       country: 'NG',
       reference,
       amount: { total: Number(req.amountPaise), currency: req.currency }, // kobo
-      payMethods: ['BankCard'],
-      metadata: {
-        idempotency_key: req.idempotencyKey,
-      },
+      returnUrl: this.requireMetadata(config, 'returnUrl'),
+      ...(typeof config.metadata?.['callbackUrl'] === 'string' && {
+        callbackUrl: config.metadata['callbackUrl'],
+      }),
+      product: { name: 'Payment', description: `Order ${reference}` },
+      ...(req.customerEmail && { userInfo: { userEmail: req.customerEmail } }),
     };
-    const bodyJson = JSON.stringify(payload);
 
-    const http = this.buildHttpClient(config, this.authHeaders(config, bodyJson));
+    const http = this.buildHttpClient(config, {
+      Authorization: `Bearer ${this.requireMetadata(config, 'publicKey')}`,
+      MerchantId: config.apiKey ?? '',
+      'Content-Type': 'application/json',
+    });
 
     const body = await this.request<OpayResponse>(
-      () => http.post<OpayResponse>('/api/v1/cashier/create', payload),
+      () => http.post<OpayResponse>('/api/v1/international/cashier/create', payload),
       req.transactionId,
       config.timeoutMs,
     );
@@ -111,18 +135,19 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
       gatewayPaymentId: data.orderNo ?? reference,
       gatewayReference: data.reference ?? reference,
       status: 'pending',
+      checkoutUrl: data.cashierUrl,
       rawResponse: body as unknown as Record<string, unknown>,
     };
   }
 
   async capture(req: GatewayCaptureRequest): Promise<GatewayCaptureResponse> {
     const config = await this.loadConfig();
-    const payload = { orderNo: req.gatewayPaymentId };
+    const payload = { country: 'NG', orderNo: req.gatewayPaymentId };
     const bodyJson = JSON.stringify(payload);
     const http = this.buildHttpClient(config, this.authHeaders(config, bodyJson));
 
     const body = await this.request<OpayResponse>(
-      () => http.post<OpayResponse>('/api/v1/cashier/status', payload),
+      () => http.post<OpayResponse>('/api/v1/international/cashier/status', payload),
       req.transactionId,
       config.timeoutMs,
     );
@@ -140,16 +165,20 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
 
   async refund(req: GatewayRefundRequest): Promise<GatewayRefundResponse> {
     const config = await this.loadConfig();
+    // The original payment's merchant reference IS the transactionId
+    // (see authorise()), which is what Opay's refund API keys on.
     const payload = {
-      orderNo: req.gatewayPaymentId,
-      refundAmount: { total: Number(req.amountPaise), currency: req.currency },
+      country: 'NG',
+      reference: this.generateId('opay_rfnd'),
+      originalReference: req.transactionId,
+      amount: { total: Number(req.amountPaise), currency: req.currency },
       refundReason: req.reason ?? 'merchant_requested',
     };
     const bodyJson = JSON.stringify(payload);
     const http = this.buildHttpClient(config, this.authHeaders(config, bodyJson));
 
     const body = await this.request<OpayResponse>(
-      () => http.post<OpayResponse>('/api/v1/refund/create', payload),
+      () => http.post<OpayResponse>('/api/v1/international/payment/refund/create', payload),
       req.transactionId,
       config.timeoutMs,
     );
@@ -157,7 +186,7 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
     const data = body.data ?? {};
 
     return {
-      gatewayRefundId: data.refundNo ?? this.generateId('opay_rfnd'),
+      gatewayRefundId: data.orderNo ?? data.refundNo ?? payload.reference,
       status: 'refunded',
       rawResponse: body as unknown as Record<string, unknown>,
     };
@@ -180,12 +209,12 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
 
   async fetchStatus(gatewayPaymentId: string, traceId: string): Promise<GatewayStatusResponse> {
     const config = await this.loadConfig();
-    const payload = { orderNo: gatewayPaymentId };
+    const payload = { country: 'NG', orderNo: gatewayPaymentId };
     const bodyJson = JSON.stringify(payload);
     const http = this.buildHttpClient(config, this.authHeaders(config, bodyJson));
 
     const body = await this.request<OpayResponse>(
-      () => http.post<OpayResponse>('/api/v1/cashier/status', payload),
+      () => http.post<OpayResponse>('/api/v1/international/cashier/status', payload),
       traceId,
       config.timeoutMs,
     );

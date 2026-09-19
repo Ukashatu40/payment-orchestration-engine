@@ -178,6 +178,7 @@ export class TransactionsService {
           idempotencyKey: dto.idempotencyKey,
           traceId: dto.traceId,
           metadata: dto.metadata,
+          customerEmail: dto.customerEmail,
         });
 
         // 'pending' (redirect/async gateways like Paystack/Flutterwave,
@@ -255,6 +256,9 @@ export class TransactionsService {
             gatewayPaymentId: authResponse.gatewayPaymentId,
             gatewayOrderId: authResponse.gatewayOrderId ?? null,
             gatewayReference: authResponse.gatewayReference,
+            ...(authResponse.checkoutUrl && {
+              metadata: { ...(transaction.metadata ?? {}), checkoutUrl: authResponse.checkoutUrl },
+            }),
           },
         );
 

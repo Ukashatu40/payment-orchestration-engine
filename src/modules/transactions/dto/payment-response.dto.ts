@@ -45,6 +45,13 @@ export class PaymentResponseDto {
   @ApiProperty({ type: String, nullable: true })
   gatewayReference!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Hosted checkout URL the payer must open to complete payment (redirect-based gateways such as Paystack/Flutterwave). Null otherwise.',
+  })
+  checkoutUrl!: string | null;
+
   @ApiProperty()
   traceId!: string;
 
@@ -69,6 +76,8 @@ export class PaymentResponseDto {
     dto.gateway = txn.gateway;
     dto.gatewayPaymentId = txn.gatewayPaymentId;
     dto.gatewayReference = txn.gatewayReference;
+    const checkoutUrl = txn.metadata?.['checkoutUrl'];
+    dto.checkoutUrl = typeof checkoutUrl === 'string' ? checkoutUrl : null;
     dto.traceId = txn.traceId;
     dto.createdAt = txn.createdAt;
     dto.updatedAt = txn.updatedAt;

@@ -22,6 +22,7 @@ interface FlutterwaveResponse {
   message: string;
   data?: {
     id?: number;
+    link?: string;
     status?: string;
     amount?: number;
   };
@@ -84,7 +85,11 @@ export class FlutterwaveAdapter extends BaseHttpAdapter implements IGatewayAdapt
           amount: (Number(req.amountPaise) / 100).toString(), // kobo → naira
           currency: req.currency,
           customer: {
-            email: `${req.merchantId}@merchant.payflow.invalid`,
+            // See PaystackAdapter — the same RFC 2606 *.invalid TLD
+            // placeholder is rejected by gateway-side email validation,
+            // so fall back to a real-looking TLD when no real
+            // customerEmail was supplied.
+            email: req.customerEmail ?? `${req.merchantId}@merchant.payflow.com`,
           },
           meta: {
             transaction_id: req.transactionId,
@@ -99,6 +104,7 @@ export class FlutterwaveAdapter extends BaseHttpAdapter implements IGatewayAdapt
       gatewayPaymentId: txRef,
       gatewayReference: txRef,
       status: 'pending',
+      checkoutUrl: body.data?.link,
       rawResponse: body as unknown as Record<string, unknown>,
     };
   }

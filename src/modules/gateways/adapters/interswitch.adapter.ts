@@ -101,10 +101,21 @@ export class InterswitchAdapter extends BaseHttpAdapter implements IGatewayAdapt
         },
       );
       tokenResponse = res.data;
-    } catch {
+    } catch (err) {
+      // Previously a bare `catch {}` that discarded the real cause
+      // (HTTP status, response body, DNS/network error) entirely,
+      // replacing it with a fixed string — made a bad client
+      // ID/secret, a wrong base URL, and a genuine outage all look
+      // identical in the logs. Surface what actually happened.
+      const detail = axios.isAxiosError(err)
+        ? `HTTP ${err.response?.status ?? 'network error'}: ${JSON.stringify(err.response?.data) ?? err.message}`
+        : err instanceof Error
+          ? err.message
+          : 'unknown error';
+      this.logger.error('Failed to obtain Interswitch OAuth2 access token', { detail });
       throw new GatewayUnavailableException(
         this.gateway,
-        'Failed to obtain Interswitch OAuth2 access token',
+        `Failed to obtain Interswitch OAuth2 access token: ${detail}`,
       );
     }
 
