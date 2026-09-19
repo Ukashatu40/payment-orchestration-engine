@@ -114,7 +114,15 @@ export class WebhookQueueService {
       case PaymentGateway.OPAY:
         // Confirmed structure: { payload: { reference, ... }, sha512, type }
         // per https://doc.opaycheckout.com/callback-signature
-        return (payload['payload'] as any)?.['reference'] ?? '';
+        // The status is part of the ID: Opay can notify more than once per
+        // payment (e.g. PENDING then SUCCESS); keyed on reference alone, the
+        // first notification would mark the payment "processed" and the
+        // final one would be discarded as a duplicate.
+        return (
+          ((payload['payload'] as any)?.['reference'] ?? '') +
+          ':' +
+          ((payload['payload'] as any)?.['status'] ?? '')
+        );
       default:
         throw new Error(`Unknown gateway for event ID extraction: ${gateway}`);
     }

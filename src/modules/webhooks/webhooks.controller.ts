@@ -2,6 +2,7 @@
 
 import {
   Controller,
+  Logger,
   Post,
   Get,
   Param,
@@ -19,6 +20,7 @@ import { WebhookQueueService } from './webhook-queue.service';
 import { WebhookProcessorService } from './webhook-processor.service';
 import { GatewayConfigRepository } from '../gateways/repositories/gateway-config.repository';
 import { PaymentGateway, UserRole } from '../../common/enums';
+import { WebhookSignatureInvalidException } from '../../common/exceptions';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RequireCsrf } from '../auth/decorators/require-csrf.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -31,6 +33,8 @@ import { ReplayWebhookResultDto } from './dto/replay-webhook-result.dto';
 @ApiSecurity('X-API-Key')
 @Controller({ path: 'webhooks', version: '1' })
 export class WebhooksController {
+  private readonly logger = new Logger(WebhooksController.name);
+
   constructor(
     private readonly signatureService: WebhookSignatureService,
     private readonly queueService: WebhookQueueService,
@@ -176,6 +180,12 @@ export class WebhooksController {
 
     // Step 1: Load webhook secret for this gateway
     const config = await this.gatewayConfigRepo.findByGateway(gateway);
+    // The mock fallback is a string in this public source — in production a
+    // gateway with no configured secret must reject, not accept forgeries.
+    if (process.env.NODE_ENV === 'production' && !config?.webhookSecret) {
+      this.logger.error(`Rejecting ${gateway} webhook: no webhook_secret configured`);
+      throw new WebhookSignatureInvalidException(gateway);
+    }
     const secret = config?.webhookSecret ?? 'mock-webhook-secret';
 
     // Step 2: Verify signature — throws 401 on failure (FS-10)

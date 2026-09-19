@@ -83,6 +83,44 @@ describe('PaystackAdapter', () => {
       expect(result.gatewayPaymentId).toBe('psk_ref_001');
     });
 
+    it('sends callback_url with {transactionId} substituted when returnUrl is configured', async () => {
+      findByGateway.mockResolvedValue(
+        mockConfig({
+          metadata: {
+            baseUrl: BASE_URL,
+            returnUrl: 'https://portal.example.com/transactions/{transactionId}',
+          },
+        }),
+      );
+      let capturedBody: { callback_url?: string } | undefined;
+      nock(BASE_URL)
+        .post('/transaction/initialize', (body: typeof capturedBody) => {
+          capturedBody = body;
+          return true;
+        })
+        .reply(200, { status: true, message: 'ok', data: { reference: 'psk_ref_cb' } });
+
+      await adapter.authorise(baseAuthRequest);
+
+      expect(capturedBody?.callback_url).toBe(
+        `https://portal.example.com/transactions/${baseAuthRequest.transactionId}`,
+      );
+    });
+
+    it('omits callback_url when returnUrl is not configured', async () => {
+      let capturedBody: { callback_url?: string } | undefined;
+      nock(BASE_URL)
+        .post('/transaction/initialize', (body: typeof capturedBody) => {
+          capturedBody = body;
+          return true;
+        })
+        .reply(200, { status: true, message: 'ok', data: { reference: 'psk_ref_nocb' } });
+
+      await adapter.authorise(baseAuthRequest);
+
+      expect(capturedBody).not.toHaveProperty('callback_url');
+    });
+
     it('sends amount in kobo with no conversion', async () => {
       let capturedBody:
         | { amount: string; currency: string; metadata: { transaction_id: string } }

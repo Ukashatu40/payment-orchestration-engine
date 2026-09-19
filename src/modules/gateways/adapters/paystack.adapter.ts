@@ -81,6 +81,17 @@ export class PaystackAdapter extends BaseHttpAdapter implements IGatewayAdapter 
           amount: req.amountPaise.toString(), // kobo — no conversion needed
           currency: req.currency,
           reference,
+          // Where the payer's BROWSER lands after paying (Paystack appends
+          // ?trxref&reference). Overrides the dashboard "Callback URL", which
+          // must never be the POST-only webhook route. {transactionId} is
+          // substituted so the payer returns to their own transaction page.
+          ...(typeof config.metadata?.['returnUrl'] === 'string' &&
+            config.metadata['returnUrl'] && {
+              callback_url: config.metadata['returnUrl'].replaceAll(
+                '{transactionId}',
+                req.transactionId,
+              ),
+            }),
           metadata: {
             transaction_id: req.transactionId,
             idempotency_key: req.idempotencyKey,
