@@ -50,6 +50,7 @@ describe('CheckoutController', () => {
       { buildCheckoutForm, fetchStatus } as unknown as InterswitchAdapter,
       { advanceTransaction } as never,
     );
+    controller.verifyRetryDelayMs = 0;
   });
 
   it('renders an auto-submitting form with escaped values', async () => {
@@ -287,6 +288,46 @@ describe('CheckoutController', () => {
 
       expect(reply.statusCode).toBe(303);
       expect(buildCheckoutForm).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('verification retries', () => {
+    const txn = {
+      id: TXN_ID,
+      traceId: 'trace-1',
+      gateway: PaymentGateway.INTERSWITCH,
+      state: TransactionState.AUTH_INITIATED,
+      amountPaise: '300000',
+    };
+
+    it('retries a not-yet-visible payment and captures once Interswitch reports it', async () => {
+      findById.mockResolvedValue(txn);
+      fetchStatus
+        .mockResolvedValueOnce({ status: 'authorised', amountPaise: BigInt(0), rawResponse: {} })
+        .mockResolvedValueOnce({
+          status: 'captured',
+          amountPaise: BigInt(300000),
+          rawResponse: { ResponseCode: '00' },
+        });
+
+      await controller.returnForTransaction(TXN_ID, {}, makeReply() as never);
+
+      expect(fetchStatus).toHaveBeenCalledTimes(2);
+      expect(advanceTransaction).toHaveBeenCalled();
+    });
+
+    it('gives up after 3 attempts if it is never reported', async () => {
+      findById.mockResolvedValue(txn);
+      fetchStatus.mockResolvedValue({
+        status: 'authorised',
+        amountPaise: BigInt(0),
+        rawResponse: {},
+      });
+
+      await controller.returnForTransaction(TXN_ID, {}, makeReply() as never);
+
+      expect(fetchStatus).toHaveBeenCalledTimes(3);
+      expect(advanceTransaction).not.toHaveBeenCalled();
     });
   });
 });

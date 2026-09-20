@@ -66,6 +66,8 @@ function page(title: string, body: string): string {
 @Controller({ path: 'checkout/interswitch', version: '1' })
 export class CheckoutController {
   private readonly logger = new Logger(CheckoutController.name);
+  private readonly verifyAttempts = 3;
+  verifyRetryDelayMs = 2000;
 
   constructor(
     private readonly transactionRepo: TransactionRepository,
@@ -86,7 +88,28 @@ export class CheckoutController {
       }
 
       const expected = BigInt(txn.amountPaise);
-      const status = await this.interswitch.fetchStatus(txn.id, txn.traceId, expected);
+
+      // The status API can lag the redirect by a moment, so a "not found /
+      // in progress" answer is retried a couple of times before giving up.
+      let status = await this.interswitch.fetchStatus(txn.id, txn.traceId, expected);
+      for (
+        let attempt = 1;
+        attempt < this.verifyAttempts && status.status === 'authorised';
+        attempt++
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, this.verifyRetryDelayMs));
+        status = await this.interswitch.fetchStatus(txn.id, txn.traceId, expected);
+      }
+
+      this.logger.log('Interswitch status check', {
+        transactionId: txn.id,
+        gatewayStatus: status.status,
+        responseCode: status.rawResponse?.['ResponseCode'],
+        responseDescription: status.rawResponse?.['ResponseDescription'],
+        amountReturned: status.amountPaise?.toString(),
+        amountExpected: expected.toString(),
+      });
+
       if (status.status !== 'captured') return;
 
       if (status.amountPaise !== expected) {
