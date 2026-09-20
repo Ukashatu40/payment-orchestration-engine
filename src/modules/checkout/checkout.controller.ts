@@ -127,6 +127,21 @@ export class CheckoutController {
       reply.status(404).send(page('Not found', '<h1>Payment not found</h1>'));
       return;
     }
+    // A payer who already paid (return never reached us) reopening this link
+    // should be recognised, not shown the payment form again.
+    if (txn.state === TransactionState.AUTH_INITIATED) {
+      await this.verifyAndAdvance(id);
+      const refreshed = await this.transactionRepo.findById(id);
+      if (refreshed?.state === TransactionState.CAPTURED) {
+        const cfg = await this.gatewayConfigRepo.findByGateway(PaymentGateway.INTERSWITCH);
+        const url = cfg?.metadata?.['returnUrl'];
+        if (typeof url === 'string' && url) {
+          reply.status(303).header('Location', url.replaceAll('{transactionId}', id)).send();
+          return;
+        }
+      }
+      txn.state = refreshed?.state ?? txn.state;
+    }
     if (txn.state !== TransactionState.AUTH_INITIATED) {
       reply
         .status(409)
@@ -159,6 +174,21 @@ export class CheckoutController {
     );
   }
 
+  // Preferred: our transaction ID is part of the URL we gave Interswitch as
+  // site_redirect_url, so we never depend on what the hosted page echoes back
+  // (in practice its `txnref` field arrived blank). Verification asks
+  // Interswitch about THIS transaction, so the path value is only a lookup key.
+  @Post('return/:id')
+  async returnForTransaction(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, string> | undefined,
+    @Res() reply: FastifyReply,
+    @Headers('content-type') contentType?: string,
+  ): Promise<void> {
+    await this.handleReturn(id, body, {}, contentType, reply);
+  }
+
+  // Legacy route (payments created before the path form existed).
   @Post('return')
   async returnFromInterswitch(
     @Body() body: Record<string, string> | undefined,
@@ -166,16 +196,27 @@ export class CheckoutController {
     @Query() query: Record<string, string> = {},
     @Headers('content-type') contentType?: string,
   ): Promise<void> {
-    const txnRef = findTxnRef(body, query);
-    // Field NAMES only (never values) — enough to diagnose a mismatch between
-    // what Interswitch actually posts and what we expect.
+    await this.handleReturn(findTxnRef(body, query), body, query, contentType, reply);
+  }
+
+  private async handleReturn(
+    txnRef: string | undefined,
+    body: Record<string, string> | undefined,
+    query: Record<string, string>,
+    contentType: string | undefined,
+    reply: FastifyReply,
+  ): Promise<void> {
+    // Only non-sensitive fields are logged by value (never cardNum/mac).
+    const safe = ['txnref', 'resp', 'desc', 'amount', 'apprAmt'];
     this.logger.log('Interswitch return received', {
       contentType,
       bodyKeys: Object.keys(body ?? {}),
       queryKeys: Object.keys(query),
+      fields: Object.fromEntries(safe.map((k) => [k, body?.[k]])),
       txnRefFound: Boolean(txnRef),
       txnRefIsUuid: Boolean(txnRef && UUID_RE.test(txnRef)),
     });
+
     if (txnRef && UUID_RE.test(txnRef)) {
       await this.verifyAndAdvance(txnRef);
     }

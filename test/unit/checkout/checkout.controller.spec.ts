@@ -128,7 +128,7 @@ describe('CheckoutController', () => {
     async (key) => {
       const reply = makeReply();
 
-      await controller.returnFromInterswitch({ [key]: TXN_ID } as never, reply as never);
+      await controller.returnFromInterswitch({ [key]: TXN_ID }, reply as never);
 
       expect(reply.statusCode).toBe(303);
       expect(reply.headers['Location']).toContain(TXN_ID);
@@ -210,7 +210,7 @@ describe('CheckoutController', () => {
       fetchStatus.mockResolvedValue({ status: 'failed', amountPaise: BigInt(0), rawResponse: {} });
 
       await controller.returnFromInterswitch(
-        { txnref: TXN_ID, resp: '00', amount: '300000' } as never,
+        { txnref: TXN_ID, resp: '00', amount: '300000' },
         makeReply() as never,
       );
 
@@ -233,6 +233,60 @@ describe('CheckoutController', () => {
       await controller.returnFromInterswitch({ txnref: TXN_ID }, makeReply() as never);
 
       expect(fetchStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('path-based return (/return/:id)', () => {
+    const txn = {
+      id: TXN_ID,
+      traceId: 'trace-1',
+      gateway: PaymentGateway.INTERSWITCH,
+      state: TransactionState.AUTH_INITIATED,
+      amountPaise: '300000',
+    };
+
+    it('uses the transaction ID from the URL even when Interswitch echoes a blank txnref', async () => {
+      findById.mockResolvedValue(txn);
+      fetchStatus.mockResolvedValue({
+        status: 'captured',
+        amountPaise: BigInt(300000),
+        rawResponse: {},
+      });
+      const reply = makeReply();
+
+      await controller.returnForTransaction(TXN_ID, { txnref: '' }, reply as never);
+
+      expect(fetchStatus).toHaveBeenCalledWith(TXN_ID, 'trace-1', BigInt(300000));
+      expect(advanceTransaction).toHaveBeenCalled();
+      expect(reply.statusCode).toBe(303);
+      expect(reply.headers['Location']).toContain(TXN_ID);
+    });
+  });
+
+  describe('checkout page self-healing', () => {
+    it('redirects to the portal instead of re-showing the form when the payment already went through', async () => {
+      const awaiting = {
+        id: TXN_ID,
+        traceId: 't',
+        gateway: PaymentGateway.INTERSWITCH,
+        state: TransactionState.AUTH_INITIATED,
+        amountPaise: '300000',
+      };
+      findById
+        .mockResolvedValueOnce({ ...awaiting }) // page load
+        .mockResolvedValueOnce({ ...awaiting }) // verifyAndAdvance
+        .mockResolvedValueOnce({ ...awaiting, state: TransactionState.CAPTURED }); // refreshed
+      fetchStatus.mockResolvedValue({
+        status: 'captured',
+        amountPaise: BigInt(300000),
+        rawResponse: {},
+      });
+      const reply = makeReply();
+
+      await controller.checkoutPage(TXN_ID, undefined, reply as never);
+
+      expect(reply.statusCode).toBe(303);
+      expect(buildCheckoutForm).not.toHaveBeenCalled();
     });
   });
 });

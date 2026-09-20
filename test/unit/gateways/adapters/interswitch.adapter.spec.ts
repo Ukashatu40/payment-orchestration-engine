@@ -116,7 +116,7 @@ describe('InterswitchAdapter', () => {
         txn_ref: 'txn-1',
         amount: '500000',
         currency: '566',
-        site_redirect_url: `${PUBLIC_URL}/api/v1/checkout/interswitch/return`,
+        site_redirect_url: `${PUBLIC_URL}/api/v1/checkout/interswitch/return/txn-1`,
         cust_email: 'a@b.com',
       });
     });

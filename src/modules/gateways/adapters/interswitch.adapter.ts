@@ -121,7 +121,7 @@ export class InterswitchAdapter extends BaseHttpAdapter implements IGatewayAdapt
         txn_ref: p.transactionId,
         amount: p.amountPaise.toString(),
         currency: currencyCode,
-        site_redirect_url: `${this.publicBaseUrl(config)}/api/v1/checkout/interswitch/return`,
+        site_redirect_url: `${this.publicBaseUrl(config)}/api/v1/checkout/interswitch/return/${p.transactionId}`,
         ...(p.email && { cust_email: p.email }),
       },
     };
