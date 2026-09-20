@@ -119,6 +119,7 @@ describe('CheckoutController', () => {
     const reply = makeReply();
 
     await controller.returnFromInterswitch({ txnref: TXN_ID, resp: '00' }, reply as never);
+    await controller.settled();
 
     expect(reply.statusCode).toBe(303);
     expect(reply.headers['Location']).toBe(`https://portal.example.com/transactions/${TXN_ID}`);
@@ -130,6 +131,7 @@ describe('CheckoutController', () => {
       const reply = makeReply();
 
       await controller.returnFromInterswitch({ [key]: TXN_ID }, reply as never);
+      await controller.settled();
 
       expect(reply.statusCode).toBe(303);
       expect(reply.headers['Location']).toContain(TXN_ID);
@@ -140,6 +142,7 @@ describe('CheckoutController', () => {
     const reply = makeReply();
 
     await controller.returnFromInterswitch({}, reply as never, { txnref: TXN_ID });
+    await controller.settled();
 
     expect(reply.statusCode).toBe(303);
   });
@@ -148,6 +151,7 @@ describe('CheckoutController', () => {
     const reply = makeReply();
 
     await controller.returnFromInterswitch({ txnref: '../../evil' }, reply as never);
+    await controller.settled();
 
     expect(reply.statusCode).toBe(200);
     expect(reply.headers['Location']).toBeUndefined();
@@ -171,6 +175,7 @@ describe('CheckoutController', () => {
       });
 
       await controller.returnFromInterswitch({ txnref: TXN_ID }, makeReply() as never);
+      await controller.settled();
 
       expect(fetchStatus).toHaveBeenCalledWith(TXN_ID, 'trace-1', BigInt(300000));
       expect(advanceTransaction).toHaveBeenCalledWith(
@@ -189,6 +194,7 @@ describe('CheckoutController', () => {
       });
 
       await controller.returnFromInterswitch({ txnref: TXN_ID }, makeReply() as never);
+      await controller.settled();
 
       expect(advanceTransaction).not.toHaveBeenCalled();
     });
@@ -202,6 +208,7 @@ describe('CheckoutController', () => {
       });
 
       await controller.returnFromInterswitch({ txnref: TXN_ID }, makeReply() as never);
+      await controller.settled();
 
       expect(advanceTransaction).not.toHaveBeenCalled();
     });
@@ -214,6 +221,7 @@ describe('CheckoutController', () => {
         { txnref: TXN_ID, resp: '00', amount: '300000' },
         makeReply() as never,
       );
+      await controller.settled();
 
       expect(advanceTransaction).not.toHaveBeenCalled();
     });
@@ -224,6 +232,7 @@ describe('CheckoutController', () => {
       const reply = makeReply();
 
       await controller.returnFromInterswitch({ txnref: TXN_ID }, reply as never);
+      await controller.settled();
 
       expect(reply.statusCode).toBe(303);
     });
@@ -232,6 +241,7 @@ describe('CheckoutController', () => {
       findById.mockResolvedValue({ ...txn, state: TransactionState.CAPTURED });
 
       await controller.returnFromInterswitch({ txnref: TXN_ID }, makeReply() as never);
+      await controller.settled();
 
       expect(fetchStatus).not.toHaveBeenCalled();
     });
@@ -256,6 +266,7 @@ describe('CheckoutController', () => {
       const reply = makeReply();
 
       await controller.returnForTransaction(TXN_ID, { txnref: '' }, reply as never);
+      await controller.settled();
 
       expect(fetchStatus).toHaveBeenCalledWith(TXN_ID, 'trace-1', BigInt(300000));
       expect(advanceTransaction).toHaveBeenCalled();
@@ -311,6 +322,7 @@ describe('CheckoutController', () => {
         });
 
       await controller.returnForTransaction(TXN_ID, {}, makeReply() as never);
+      await controller.settled();
 
       expect(fetchStatus).toHaveBeenCalledTimes(2);
       expect(advanceTransaction).toHaveBeenCalled();
@@ -325,9 +337,54 @@ describe('CheckoutController', () => {
       });
 
       await controller.returnForTransaction(TXN_ID, {}, makeReply() as never);
+      await controller.settled();
 
       expect(fetchStatus).toHaveBeenCalledTimes(3);
       expect(advanceTransaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a hanging Interswitch status API', () => {
+    const txn = {
+      id: TXN_ID,
+      traceId: 'trace-1',
+      gateway: PaymentGateway.INTERSWITCH,
+      state: TransactionState.AUTH_INITIATED,
+      amountPaise: '300000',
+    };
+
+    it('redirects the payer immediately, without waiting for verification', async () => {
+      findById.mockResolvedValue(txn);
+      let release: (v: unknown) => void = () => undefined;
+      fetchStatus.mockReturnValue(new Promise((resolve) => (release = resolve)));
+      const reply = makeReply();
+
+      await controller.returnForTransaction(TXN_ID, {}, reply as never);
+
+      expect(reply.statusCode).toBe(303); // answered while fetchStatus is still pending
+      expect(advanceTransaction).not.toHaveBeenCalled();
+
+      release({ status: 'captured', amountPaise: BigInt(300000), rawResponse: {} });
+      await controller.settled();
+      expect(advanceTransaction).toHaveBeenCalled(); // and completes once it answers
+    });
+
+    it('still renders the checkout page when the status API never answers', async () => {
+      jest.useFakeTimers();
+      try {
+        findById.mockResolvedValue(txn);
+        fetchStatus.mockReturnValue(new Promise(() => undefined));
+        const reply = makeReply();
+
+        const pending = controller.checkoutPage(TXN_ID, undefined, reply as never);
+        await jest.advanceTimersByTimeAsync(6000);
+        await pending;
+
+        expect(reply.statusCode).toBe(200);
+        expect(buildCheckoutForm).toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

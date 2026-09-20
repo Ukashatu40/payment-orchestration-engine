@@ -40,6 +40,22 @@ function findTxnRef(...sources: Array<Record<string, unknown> | undefined>): str
   return undefined;
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err: unknown) => {
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      },
+    );
+  });
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -66,8 +82,9 @@ function page(title: string, body: string): string {
 @Controller({ path: 'checkout/interswitch', version: '1' })
 export class CheckoutController {
   private readonly logger = new Logger(CheckoutController.name);
-  private readonly verifyAttempts = 3;
   verifyRetryDelayMs = 2000;
+  // Background verifications still running; lets tests (and shutdown) await them.
+  private readonly background = new Set<Promise<void>>();
 
   constructor(
     private readonly transactionRepo: TransactionRepository,
@@ -76,7 +93,29 @@ export class CheckoutController {
     private readonly processor: WebhookProcessorService,
   ) {}
 
-  private async verifyAndAdvance(txnRef: string): Promise<void> {
+  async settled(): Promise<void> {
+    await Promise.all([...this.background]);
+  }
+
+  // Runs verification without holding the payer's request open: Interswitch's
+  // status API can hang for the full gateway timeout (45s+).
+  private verifyInBackground(txnRef: string): void {
+    const job = this.verifyAndAdvance(txnRef, { attempts: 3 }).finally(() =>
+      this.background.delete(job),
+    );
+    this.background.add(job);
+  }
+
+  // `budgetMs` bounds each status call when a human is waiting on the response
+  // (the checkout page); the background job uses the adapter's own timeout.
+  private async verifyAndAdvance(
+    txnRef: string,
+    opts: { attempts: number; budgetMs?: number },
+  ): Promise<void> {
+    const check = (id: string, traceId: string, amount: bigint) => {
+      const call = this.interswitch.fetchStatus(id, traceId, amount);
+      return opts.budgetMs ? withTimeout(call, opts.budgetMs) : call;
+    };
     try {
       const txn = await this.transactionRepo.findById(txnRef);
       if (
@@ -91,14 +130,10 @@ export class CheckoutController {
 
       // The status API can lag the redirect by a moment, so a "not found /
       // in progress" answer is retried a couple of times before giving up.
-      let status = await this.interswitch.fetchStatus(txn.id, txn.traceId, expected);
-      for (
-        let attempt = 1;
-        attempt < this.verifyAttempts && status.status === 'authorised';
-        attempt++
-      ) {
+      let status = await check(txn.id, txn.traceId, expected);
+      for (let attempt = 1; attempt < opts.attempts && status.status === 'authorised'; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, this.verifyRetryDelayMs));
-        status = await this.interswitch.fetchStatus(txn.id, txn.traceId, expected);
+        status = await check(txn.id, txn.traceId, expected);
       }
 
       this.logger.log('Interswitch status check', {
@@ -153,7 +188,7 @@ export class CheckoutController {
     // A payer who already paid (return never reached us) reopening this link
     // should be recognised, not shown the payment form again.
     if (txn.state === TransactionState.AUTH_INITIATED) {
-      await this.verifyAndAdvance(id);
+      await this.verifyAndAdvance(id, { attempts: 1, budgetMs: 6000 });
       const refreshed = await this.transactionRepo.findById(id);
       if (refreshed?.state === TransactionState.CAPTURED) {
         const cfg = await this.gatewayConfigRepo.findByGateway(PaymentGateway.INTERSWITCH);
@@ -240,14 +275,17 @@ export class CheckoutController {
       txnRefIsUuid: Boolean(txnRef && UUID_RE.test(txnRef)),
     });
 
-    if (txnRef && UUID_RE.test(txnRef)) {
-      await this.verifyAndAdvance(txnRef);
-    }
     const config = await this.gatewayConfigRepo.findByGateway(PaymentGateway.INTERSWITCH);
     const returnUrl = config?.metadata?.['returnUrl'];
+    const validRef = Boolean(txnRef && UUID_RE.test(txnRef));
 
-    if (txnRef && UUID_RE.test(txnRef) && typeof returnUrl === 'string' && returnUrl) {
-      reply.status(303).header('Location', returnUrl.replaceAll('{transactionId}', txnRef)).send();
+    // Answer the payer first; confirm the payment with Interswitch afterwards.
+    if (validRef && typeof returnUrl === 'string' && returnUrl) {
+      reply
+        .status(303)
+        .header('Location', returnUrl.replaceAll('{transactionId}', txnRef as string))
+        .send();
+      this.verifyInBackground(txnRef as string);
       return;
     }
 
@@ -259,5 +297,6 @@ export class CheckoutController {
           '<h1>Thanks — your payment is being confirmed.</h1><p>You can close this page.</p>',
         ),
       );
+    if (validRef) this.verifyInBackground(txnRef as string);
   }
 }
