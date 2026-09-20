@@ -176,6 +176,30 @@ describe('OpayAdapter', () => {
       expect(result.amountPaise).toBe(BigInt(500000));
     });
 
+    it('also reads a flat (non-enveloped) status response', async () => {
+      nock(BASE_URL)
+        .post('/api/v1/international/cashier/status')
+        .reply(200, {
+          code: '00000',
+          message: 'ok',
+          status: 'SUCCESS',
+          amount: { total: 500000, currency: 'NGN' },
+        });
+
+      const result = await adapter.fetchStatus('opay_order_1', 'trace-1');
+
+      expect(result.status).toBe('captured');
+      expect(result.amountPaise).toBe(BigInt(500000));
+    });
+
+    it('maps CLOSE to expired', async () => {
+      nock(BASE_URL)
+        .post('/api/v1/international/cashier/status')
+        .reply(200, { code: '00000', message: 'ok', data: { status: 'CLOSE' } });
+
+      expect((await adapter.fetchStatus('opay_order_1', 'trace-1')).status).toBe('expired');
+    });
+
     it('maps FAIL to failed', async () => {
       nock(BASE_URL)
         .post('/api/v1/international/cashier/status')

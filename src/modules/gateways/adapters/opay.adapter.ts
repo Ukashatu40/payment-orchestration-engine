@@ -180,7 +180,9 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
       config.timeoutMs,
     );
 
-    const data = body.data ?? {};
+    // Opay's docs list the status fields flat in some places and under `data`
+    // in others; accept both rather than misreading a real status as "failed".
+    const data = body.data ?? (body as unknown as NonNullable<OpayResponse['data']>);
     const captured = data.status === 'SUCCESS';
 
     return {
@@ -247,7 +249,9 @@ export class OpayAdapter extends BaseHttpAdapter implements IGatewayAdapter {
       config.timeoutMs,
     );
 
-    const data = body.data ?? {};
+    // Opay's docs list the status fields flat in some places and under `data`
+    // in others; accept both rather than misreading a real status as "failed".
+    const data = body.data ?? (body as unknown as NonNullable<OpayResponse['data']>);
     const statusMap: Record<string, GatewayStatusResponse['status']> = {
       SUCCESS: 'captured',
       FAIL: 'failed',

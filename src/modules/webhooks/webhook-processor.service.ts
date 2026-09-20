@@ -50,15 +50,33 @@ export class WebhookProcessorService {
     let claimedDedupMarker = false;
 
     try {
-      // Step 1: Deduplication — atomic check + insert (Section A5.4)
-      // If this event ID was already processed, return immediately.
-      // HTTP 200 was already sent to the gateway by the controller.
-      // Satisfies FS-02 (duplicate webhook delivery).
+      // Step 1: Resolve the transaction, then deduplicate (Section A5.4).
+      // A duplicate event ID returns immediately; HTTP 200 was already sent
+      // to the gateway by the controller. Satisfies FS-02.
       const payloadHash = this.queueService.hashPayload(Buffer.from(JSON.stringify(payload)));
       const eventType = this.queueService.extractEventType(gateway, payload);
 
       const transactionId = this.extractTransactionId(gateway, payload);
 
+      // If the webhook names a transaction, make sure this database has it
+      // BEFORE recording the dedupe marker: the marker has a foreign key to
+      // transactions, so a webhook for a transaction that doesn't exist here
+      // (created against another environment, or deleted) would otherwise fail
+      // the insert and retry into the DLQ forever. (A null ID is allowed by
+      // the FK, so events without one still get their dedupe marker.)
+      const transaction = transactionId ? await this.transactionRepo.findById(transactionId) : null;
+
+      if (transactionId && !transaction) {
+        this.logger.warn('Transaction not found for webhook', {
+          gateway,
+          eventId,
+          transactionId,
+        });
+        await this.queueService.markCompleted(queueId);
+        return;
+      }
+
+      // Step 2: Deduplication — atomic check + insert (Section A5.4)
       const isNew = await this.dataSource.transaction(async (manager) => {
         return this.processedEventRepo.insertIfNotExists(
           gateway,
@@ -82,24 +100,11 @@ export class WebhookProcessorService {
         return;
       }
 
-      // Step 2: Find the transaction this webhook refers to
-      if (!transactionId) {
+      if (!transactionId || !transaction) {
         this.logger.warn('Webhook has no resolvable transaction ID', {
           gateway,
           eventId,
           payload,
-        });
-        await this.queueService.markCompleted(queueId);
-        return;
-      }
-
-      const transaction = await this.transactionRepo.findById(transactionId);
-
-      if (!transaction) {
-        this.logger.warn('Transaction not found for webhook', {
-          gateway,
-          eventId,
-          transactionId,
         });
         await this.queueService.markCompleted(queueId);
         return;
@@ -122,16 +127,16 @@ export class WebhookProcessorService {
         return;
       }
 
-      // Step 5: Work out the path from the current state to the target.
-      // Gateways that auto-capture (Paystack, Flutterwave, ...) report a
-      // single "paid" event, but the state machine has no direct edge from
-      // AUTH_INITIATED/AUTHORISED to CAPTURED — the intermediate states
-      // are walked (and logged) here. If the target isn't reachable at all
-      // (e.g. webhook arrives after the API already advanced the state),
-      // the state machine handles it gracefully (FS-06).
-      const path = this.pathTo(transaction.state, transition.toState);
+      // Step 5+6: walk the transaction to the target state (see advanceTransaction)
+      const advanced = await this.advanceTransaction(transaction, transition.toState, {
+        event: transition.event,
+        triggeredBy: 'webhook_processor',
+        gatewayReference: eventId,
+        gatewayResponse: payload,
+        metadata: { queueId, gateway, eventType },
+      });
 
-      if (!path) {
+      if (!advanced) {
         this.logger.log('Webhook transition not applicable — state already advanced', {
           gateway,
           eventId,
@@ -140,28 +145,6 @@ export class WebhookProcessorService {
         });
         await this.queueService.markCompleted(queueId);
         return;
-      }
-
-      // Step 6: Apply the state transition(s)
-      for (const [i, toState] of path.entries()) {
-        const isFinal = i === path.length - 1;
-        await this.stateMachine.transition(transaction.id, toState, {
-          event: isFinal ? transition.event : `${transition.event}_VIA_${toState}`,
-          triggeredBy: 'webhook_processor',
-          traceId: transaction.traceId,
-          gatewayReference: eventId,
-          gatewayResponse: payload,
-          metadata: { queueId, gateway, eventType },
-        });
-      }
-
-      // The API capture path records capturedPaise itself; a webhook-driven
-      // capture must too, or a fully captured payment reads as ₦0 captured
-      // (and later refund-limit checks see nothing to refund).
-      if (transition.toState === TransactionState.CAPTURED) {
-        await this.dataSource
-          .getRepository(Transaction)
-          .update({ id: transaction.id }, { capturedPaise: BigInt(transaction.amountPaise) });
       }
 
       await this.queueService.markCompleted(queueId);
@@ -191,6 +174,54 @@ export class WebhookProcessorService {
       // Exponential backoff retry — moves to DLQ after max retries
       await this.queueService.markFailed(queueId, error.message, retryCount + 1);
     }
+  }
+
+  // ----------------------------------------------------------------
+  // Moves a transaction to `toState`, walking (and logging) intermediate
+  // states where the state machine has no direct edge. Gateways that
+  // auto-capture (Paystack, Flutterwave, ...) report a single "paid" event,
+  // but there is no direct AUTH_INITIATED/AUTHORISED -> CAPTURED edge.
+  // Returns false if the target is unreachable from the current state (e.g.
+  // the state already advanced — FS-06), true once applied.
+  // Also used by the Interswitch browser-return handler, which verifies the
+  // payment server-side and does not depend on a webhook being configured.
+  // ----------------------------------------------------------------
+  async advanceTransaction(
+    transaction: Transaction,
+    toState: TransactionState,
+    opts: {
+      event: string;
+      triggeredBy: string;
+      gatewayReference: string;
+      gatewayResponse: Record<string, unknown>;
+      metadata: Record<string, unknown>;
+    },
+  ): Promise<boolean> {
+    const path = this.pathTo(transaction.state, toState);
+    if (!path) return false;
+
+    for (const [i, step] of path.entries()) {
+      const isFinal = i === path.length - 1;
+      await this.stateMachine.transition(transaction.id, step, {
+        event: isFinal ? opts.event : `${opts.event}_VIA_${step}`,
+        triggeredBy: opts.triggeredBy,
+        traceId: transaction.traceId,
+        gatewayReference: opts.gatewayReference,
+        gatewayResponse: opts.gatewayResponse,
+        metadata: opts.metadata,
+      });
+    }
+
+    // The API capture path records capturedPaise itself; a webhook-driven
+    // capture must too, or a fully captured payment reads as zero captured
+    // (and later refund-limit checks see nothing to refund).
+    if (toState === TransactionState.CAPTURED) {
+      await this.dataSource
+        .getRepository(Transaction)
+        .update({ id: transaction.id }, { capturedPaise: BigInt(transaction.amountPaise) });
+    }
+
+    return true;
   }
 
   // Direct edge if the state machine allows it; otherwise, for CAPTURED
@@ -351,6 +382,12 @@ export class WebhookProcessorService {
           toState: TransactionState.AUTH_FAILED,
           event: 'WEBHOOK_OPAY_FAILED',
         },
+        // The payer never completed checkout and Opay closed the order
+        // ("closed due to timeout") — the payment is dead, not still pending.
+        CLOSE: {
+          toState: TransactionState.AUTH_EXPIRED,
+          event: 'WEBHOOK_OPAY_CLOSED',
+        },
       },
     };
 
@@ -421,19 +458,14 @@ export class WebhookProcessorService {
     // entity value is always true — normalise before comparing.
     const expectedAmount = BigInt(transaction.amountPaise);
 
-    if (
-      webhookAmount !== null &&
-      webhookAmount !== BigInt(0) &&
-      webhookAmount !== expectedAmount
-    ) {
+    if (webhookAmount !== null && webhookAmount !== BigInt(0) && webhookAmount !== expectedAmount) {
       this.logger.warn('Webhook amount mismatch — possible replay attack', {
         gateway,
         webhookAmount: webhookAmount.toString(),
         expectedAmount: expectedAmount.toString(),
       });
       throw new Error(
-        `Webhook amount mismatch: received ${webhookAmount}, ` +
-          `expected ${expectedAmount}`,
+        `Webhook amount mismatch: received ${webhookAmount}, ` + `expected ${expectedAmount}`,
       );
     }
   }

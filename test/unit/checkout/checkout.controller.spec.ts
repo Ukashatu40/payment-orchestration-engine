@@ -31,6 +31,8 @@ describe('CheckoutController', () => {
   const findById = jest.fn();
   const findByGateway = jest.fn();
   const buildCheckoutForm = jest.fn();
+  const fetchStatus = jest.fn();
+  const advanceTransaction = jest.fn();
   let controller: CheckoutController;
 
   beforeEach(() => {
@@ -45,7 +47,8 @@ describe('CheckoutController', () => {
     controller = new CheckoutController(
       { findById } as never,
       { findByGateway } as never,
-      { buildCheckoutForm } as unknown as InterswitchAdapter,
+      { buildCheckoutForm, fetchStatus } as unknown as InterswitchAdapter,
+      { advanceTransaction } as never,
     );
   });
 
@@ -127,5 +130,89 @@ describe('CheckoutController', () => {
 
     expect(reply.statusCode).toBe(200);
     expect(reply.headers['Location']).toBeUndefined();
+  });
+
+  describe('return verification', () => {
+    const txn = {
+      id: TXN_ID,
+      traceId: 'trace-1',
+      gateway: PaymentGateway.INTERSWITCH,
+      state: TransactionState.AUTH_INITIATED,
+      amountPaise: '300000',
+    };
+
+    it('captures the payment when Interswitch approves the matching amount', async () => {
+      findById.mockResolvedValue(txn);
+      fetchStatus.mockResolvedValue({
+        status: 'captured',
+        amountPaise: BigInt(300000),
+        rawResponse: { ResponseCode: '00' },
+      });
+
+      await controller.returnFromInterswitch({ txnref: TXN_ID }, makeReply() as never);
+
+      expect(fetchStatus).toHaveBeenCalledWith(TXN_ID, 'trace-1', BigInt(300000));
+      expect(advanceTransaction).toHaveBeenCalledWith(
+        txn,
+        TransactionState.CAPTURED,
+        expect.objectContaining({ event: 'INTERSWITCH_RETURN_VERIFIED' }),
+      );
+    });
+
+    it('does not capture when Interswitch approved a different amount', async () => {
+      findById.mockResolvedValue(txn);
+      fetchStatus.mockResolvedValue({
+        status: 'captured',
+        amountPaise: BigInt(1),
+        rawResponse: {},
+      });
+
+      await controller.returnFromInterswitch({ txnref: TXN_ID }, makeReply() as never);
+
+      expect(advanceTransaction).not.toHaveBeenCalled();
+    });
+
+    it('does not capture a pending or failed result', async () => {
+      findById.mockResolvedValue(txn);
+      fetchStatus.mockResolvedValue({
+        status: 'authorised',
+        amountPaise: BigInt(0),
+        rawResponse: {},
+      });
+
+      await controller.returnFromInterswitch({ txnref: TXN_ID }, makeReply() as never);
+
+      expect(advanceTransaction).not.toHaveBeenCalled();
+    });
+
+    it('never trusts the browser: a forged resp=00 without gateway approval changes nothing', async () => {
+      findById.mockResolvedValue(txn);
+      fetchStatus.mockResolvedValue({ status: 'failed', amountPaise: BigInt(0), rawResponse: {} });
+
+      await controller.returnFromInterswitch(
+        { txnref: TXN_ID, resp: '00', amount: '300000' } as never,
+        makeReply() as never,
+      );
+
+      expect(advanceTransaction).not.toHaveBeenCalled();
+    });
+
+    it('still redirects the payer when verification throws', async () => {
+      findById.mockResolvedValue(txn);
+      fetchStatus.mockRejectedValue(new Error('gateway down'));
+      const reply = makeReply();
+
+      await controller.returnFromInterswitch({ txnref: TXN_ID }, reply as never);
+
+      expect(reply.statusCode).toBe(303);
+    });
+
+    it('skips verification for a payment that is no longer awaiting the payer', async () => {
+      findById.mockResolvedValue({ ...txn, state: TransactionState.CAPTURED });
+
+      await controller.returnFromInterswitch({ txnref: TXN_ID }, makeReply() as never);
+
+      expect(fetchStatus).not.toHaveBeenCalled();
+    });
   });
 });
