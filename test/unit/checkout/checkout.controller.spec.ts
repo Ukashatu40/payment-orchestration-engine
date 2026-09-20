@@ -123,6 +123,26 @@ describe('CheckoutController', () => {
     expect(reply.headers['Location']).toBe(`https://portal.example.com/transactions/${TXN_ID}`);
   });
 
+  it.each([['txnRef'], ['TXNREF'], ['txn_ref'], ['transactionreference']])(
+    'finds the transaction reference posted as "%s"',
+    async (key) => {
+      const reply = makeReply();
+
+      await controller.returnFromInterswitch({ [key]: TXN_ID } as never, reply as never);
+
+      expect(reply.statusCode).toBe(303);
+      expect(reply.headers['Location']).toContain(TXN_ID);
+    },
+  );
+
+  it('also accepts the reference in the query string', async () => {
+    const reply = makeReply();
+
+    await controller.returnFromInterswitch({}, reply as never, { txnref: TXN_ID });
+
+    expect(reply.statusCode).toBe(303);
+  });
+
   it('ignores a non-UUID txnref rather than redirecting', async () => {
     const reply = makeReply();
 

@@ -1,6 +1,16 @@
 // src/modules/checkout/checkout.controller.ts
 
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
 import { Logger } from '@nestjs/common';
@@ -12,6 +22,23 @@ import { PaymentGateway, TransactionState } from '../../common/enums';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/;
+
+// Interswitch documents the field as `txnref`, but casing/underscore variants
+// (txnRef, txn_ref, TXNREF ...) are matched too, in the form body or the query.
+function findTxnRef(...sources: Array<Record<string, unknown> | undefined>): string | undefined {
+  for (const source of sources) {
+    for (const [key, value] of Object.entries(source ?? {})) {
+      if (
+        /^(txn|transaction)_?ref(erence)?$/i.test(key) &&
+        typeof value === 'string' &&
+        value.trim()
+      ) {
+        return value.trim();
+      }
+    }
+  }
+  return undefined;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -136,8 +163,19 @@ export class CheckoutController {
   async returnFromInterswitch(
     @Body() body: Record<string, string> | undefined,
     @Res() reply: FastifyReply,
+    @Query() query: Record<string, string> = {},
+    @Headers('content-type') contentType?: string,
   ): Promise<void> {
-    const txnRef = body?.['txnref'] ?? body?.['txnRef'];
+    const txnRef = findTxnRef(body, query);
+    // Field NAMES only (never values) — enough to diagnose a mismatch between
+    // what Interswitch actually posts and what we expect.
+    this.logger.log('Interswitch return received', {
+      contentType,
+      bodyKeys: Object.keys(body ?? {}),
+      queryKeys: Object.keys(query),
+      txnRefFound: Boolean(txnRef),
+      txnRefIsUuid: Boolean(txnRef && UUID_RE.test(txnRef)),
+    });
     if (txnRef && UUID_RE.test(txnRef)) {
       await this.verifyAndAdvance(txnRef);
     }
