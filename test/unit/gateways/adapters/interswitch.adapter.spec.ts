@@ -121,6 +121,23 @@ describe('InterswitchAdapter', () => {
       });
     });
 
+    it('posts to checkoutBaseUrl when set, while baseUrl stays the status-API host', () => {
+      const form = adapter.buildCheckoutForm(
+        mockConfig({
+          metadata: {
+            baseUrl: BASE_URL,
+            checkoutBaseUrl: 'https://newwebpay-sandbox.interswitchng.com/',
+            merchantCode: 'MX000',
+            payItemId: 'P',
+            publicBaseUrl: PUBLIC_URL,
+          },
+        }),
+        { transactionId: 't', amountPaise: BigInt(1), currency: 'NGN' },
+      );
+
+      expect(form.action).toBe('https://newwebpay-sandbox.interswitchng.com/collections/w/pay');
+    });
+
     it('rejects an unsupported currency', () => {
       expect(() =>
         adapter.buildCheckoutForm(mockConfig(), {

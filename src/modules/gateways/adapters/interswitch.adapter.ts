@@ -48,7 +48,8 @@ const CURRENCY_CODES: Record<string, string> = { NGN: '566', USD: '840' };
 // (data.merchantReference) resolve straight back to it.
 //
 // Config (gateway_config.metadata): merchantCode, payItemId, baseUrl
-// (https://sandbox.interswitchng.com), publicBaseUrl (this backend's
+// (https://sandbox.interswitchng.com; status API + default page host),
+// checkoutBaseUrl (optional host for the hosted page only), publicBaseUrl (this backend's
 // public origin; falls back to PUBLIC_BASE_URL / RENDER_EXTERNAL_URL),
 // returnUrl (page the payer lands on, may use {transactionId}).
 // Webhook signature secret lives in gateway_config.webhook_secret.
@@ -111,7 +112,15 @@ export class InterswitchAdapter extends BaseHttpAdapter implements IGatewayAdapt
         `Interswitch checkout does not support currency ${p.currency}`,
       );
     }
-    const baseURL = this.requireMetadata(config, 'baseUrl').replace(/\/+$/, '');
+    // The hosted checkout page and the status API don't always live on the
+    // same host (console-issued merchants use newwebpay-*, the status API is
+    // on sandbox.*), so the page host can be overridden separately.
+    const checkoutBase = config.metadata?.['checkoutBaseUrl'];
+    const baseURL = (
+      typeof checkoutBase === 'string' && checkoutBase
+        ? checkoutBase
+        : this.requireMetadata(config, 'baseUrl')
+    ).replace(/\/+$/, '');
 
     return {
       action: `${baseURL}/collections/w/pay`,
